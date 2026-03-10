@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Sensitive deploy scripts (contain server credentials)
+deploy.py
+deploy_patch.py
+fix_nginx.py
+fix_nginx_ssl.py
+fix_store.py
+patch2.py
+patch3.py
+patch4.py
+
+# Runtime data (contains user passwords, sessions, emails)
+data/
+
+# User-uploaded files
+public/uploads/
+
+# Environment variables
+.env
+.env.*
+
+# Claude internal config
+.claude/
+
+# Old/backup files at root (anchored to root with leading slash)
+/app.js
+/styles.css
+/index.html
+/test_site.js
+
+# OS
+.DS_Store
+Thumbs.db
