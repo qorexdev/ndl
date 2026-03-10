@@ -30,6 +30,9 @@ public/uploads/
 /index.html
 /test_site.js
 
+# Screenshots
+screenshots/
+
 # OS
 .DS_Store
 Thumbs.db

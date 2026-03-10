@@ -6,18 +6,6 @@
 
 ---
 
-## Screenshots
-
-| Home | Level List |
-|------|-----------|
-| ![Home](screenshots/01-home.png) | ![List](screenshots/02-list.png) |
-
-| Level Page | Submit Record |
-|-----------|--------------|
-| ![Level](screenshots/03-level-page.png) | ![Submit](screenshots/07-submit.png) |
-
----
-
 ## Features
 
 - **Ranked demon list** — levels sorted by difficulty with point values, creator info and video proof
@@ -66,7 +54,6 @@ ndl/
 │   ├── assets/
 │   │   └── favicon.svg
 │   └── *.html             # One HTML file per page (SPA-like)
-└── screenshots/           # UI screenshots for docs
 ```
 
 ---
