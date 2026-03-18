@@ -508,7 +508,7 @@ function pageTitle(page) {
 }
 
 function backgroundGeometry() {
-  return "";
+  return `<div class="bg-geometry" aria-hidden="true"></div>`;
 }
 
 function header(page) {
@@ -570,6 +570,7 @@ function footer() {
         <div class="footer-left-links">
           <a class="footer-channel-btn" href="https://t.me/NDemonList" target="_blank" rel="noreferrer">${tgIcon} ${t("footerChannel")}</a>
           <a class="footer-api-link" href="/api">API Documentation</a>
+          <a class="footer-api-link" href="https://github.com/qorexdev/ndl" target="_blank" rel="noreferrer">${githubIcon} Source Code</a>
         </div>
       </div>
       <div class="footer-credits">
