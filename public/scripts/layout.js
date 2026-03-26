@@ -1,6 +1,6 @@
 const icons = {
   globe:
-    '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3a15 15 0 0 1 4 9 15 15 0 0 1-4 9 15 15 0 0 1-4-9 15 15 0 0 1 4-9z"></path></svg>',
+    '<svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 3C8.14 3 5 6.14 5 10c0 2.67 1.42 5 3.56 6.32L9 18h6l.44-1.68C17.58 15 19 12.67 19 10 19 6.14 15.86 3 12 3zM8 9.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0zM13 9.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0z"/><rect x="9" y="18" width="2.5" height="3" rx="0.5"/><rect x="12.5" y="18" width="2.5" height="3" rx="0.5"/></svg>',
   list:
     '<svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>',
   trophy:
@@ -556,40 +556,25 @@ function header(page) {
 }
 
 function footer() {
-  const githubIcon = `<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.8.1-.7.1-.7 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.3-3.2-.1-.3-.6-1.5.1-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6.2 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>`;
-  const tgIcon = `<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.19 13.4l-2.948-.924c-.64-.203-.658-.64.135-.954l11.57-4.461c.537-.194 1.006.131.947.16z"/></svg>`;
+  const githubIcon = `<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.8.1-.7.1-.7 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.3-3.2-.1-.3-.6-1.5.1-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6.2 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>`;
+  const tgIcon = `<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.19 13.4l-2.948-.924c-.64-.203-.658-.64.135-.954l11.57-4.461c.537-.194 1.006.131.947.16z"/></svg>`;
+  const year = new Date().getFullYear();
   return `
     <footer>
-      <div class="footer-left">
-        <div class="footer-logo">
-          ${icon("globe")}
-          ${t("siteName")}
-        </div>
-        <div class="footer-desc">${t("footerText")}</div>
-        <div class="footer-subdesc">${t("footerBuilt")}</div>
-        <div class="footer-left-links">
-          <a class="footer-channel-btn" href="https://t.me/NDemonList" target="_blank" rel="noreferrer">${tgIcon} ${t("footerChannel")}</a>
-          <a class="footer-api-link" href="/api">API Documentation</a>
-          <a class="footer-api-link" href="https://github.com/qorexdev/ndl" target="_blank" rel="noreferrer">${githubIcon} Source Code</a>
-        </div>
-      </div>
-      <div class="footer-credits">
-        <div class="footer-credit-block">
-          <div class="footer-credit-label">${t("footerDev")}</div>
-          <div class="footer-credit-row">
-            <span class="footer-credit-name">qorexdev</span>
-            <span class="footer-credit-arrow">→</span>
-            <span class="footer-credit-contacts">${t("footerContacts")}</span>
-            <a class="footer-contact-btn" href="https://github.com/qorexdev" target="_blank" rel="noreferrer" aria-label="GitHub">${githubIcon} GitHub</a>
-            <a class="footer-contact-btn" href="https://t.me/qorexdev" target="_blank" rel="noreferrer" aria-label="Telegram">${tgIcon} Telegram</a>
+      <div class="footer-inner">
+        <div class="footer-top">
+          <div class="footer-brand">
+            <div class="footer-logo">${icon("globe")} ${t("siteName")}</div>
+            <div class="footer-desc">${t("footerText")}</div>
+          </div>
+          <div class="footer-socials">
+            <a class="footer-social" href="https://t.me/NDemonList" target="_blank" rel="noreferrer" aria-label="Telegram channel">${tgIcon}</a>
+            <a class="footer-social" href="https://github.com/qorexdev/ndl" target="_blank" rel="noreferrer" aria-label="GitHub">${githubIcon}</a>
           </div>
         </div>
-        <div class="footer-credit-block">
-          <div class="footer-credit-label">${t("footerMod")}</div>
-          <div class="footer-credit-row">
-            <span class="footer-mod-badge">★</span>
-            <span class="footer-mod-name">WTBATLL</span>
-          </div>
+        <div class="footer-divider"></div>
+        <div class="footer-bottom">
+          <span class="footer-copy">© ${year} <a href="/" class="footer-domain">ndlist.space</a> · developed by <span class="footer-dev-link">qorex</span></span>
         </div>
       </div>
     </footer>
@@ -658,6 +643,16 @@ export function bindShellEvents(onChange) {
       themeBtn.innerHTML = nextTheme === "dark" ? icon("sun") : icon("moon");
     });
   }
+}
+
+export function updateShellNav(page) {
+  document.title = pageTitle(page);
+  document.querySelectorAll(".nav-links .nav-item").forEach((a) => {
+    const id = a.id.replace("nav-", "");
+    a.classList.toggle("active", id === page || (page === "level" && id === "list"));
+  });
+  const userLink = document.querySelector(".user-profile");
+  if (userLink) userLink.classList.toggle("active", page === "account");
 }
 
 export function renderLoading() {

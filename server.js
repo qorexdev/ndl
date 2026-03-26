@@ -30,9 +30,12 @@ const {
   notFound,
   saveUploadedImage,
   sendJson,
+  sendJsonPublic,
   serveStatic,
   unauthorized,
 } = require("./server/utils");
+
+const { notifyLevelAdded, notifyLevelMoved, notifyLevelRemoved } = require("./server/telegram");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3000);
@@ -146,9 +149,12 @@ async function handleAuthRoutes(store, req, res, pathname) {
         return true;
       }
 
-      const countryCode = COUNTRY_BY_CODE.has(String(body.countryCode || "").trim().toUpperCase())
-        ? String(body.countryCode).trim().toUpperCase()
-        : "";
+      const rawCountry = String(body.countryCode || "").trim().toUpperCase();
+      if (!COUNTRY_BY_CODE.has(rawCountry)) {
+        badRequest(res, "Country is required");
+        return true;
+      }
+      const countryCode = rawCountry;
 
       const passwordPayload = hashPassword(password);
 
@@ -174,7 +180,7 @@ async function handleAuthRoutes(store, req, res, pathname) {
       };
 
       store.users.push(user);
-      const token = createSession(store, user.id);
+      const token = await createSession(store, user.id);
       await writeStore(store);
 
       sendJson(res, 201, {
@@ -205,8 +211,7 @@ async function handleAuthRoutes(store, req, res, pathname) {
         return true;
       }
 
-      const token = createSession(store, user.id);
-      await writeStore(store);
+      const token = await createSession(store, user.id);
 
       sendJson(res, 200, { token, ...sessionPayload(user) });
     } catch (error) {
@@ -218,8 +223,7 @@ async function handleAuthRoutes(store, req, res, pathname) {
   if (req.method === "POST" && pathname === "/api/auth/logout") {
     const token = getTokenFromRequest(req);
     if (token) {
-      revokeSession(store, token);
-      await writeStore(store);
+      await revokeSession(store, token);
     }
     sendJson(res, 200, { ok: true });
     return true;
@@ -305,12 +309,12 @@ async function handleApi(req, res) {
   if (await handleAccountRoutes(store, req, res, pathname)) return;
 
   if (req.method === "GET" && pathname === "/api/countries") {
-    sendJson(res, 200, COUNTRIES);
+    sendJsonPublic(res, COUNTRIES, 3600);
     return;
   }
 
   if (req.method === "GET" && pathname === "/api/site-summary") {
-    sendJson(res, 200, computeSummary(store, COUNTRY_BY_CODE));
+    sendJsonPublic(res, computeSummary(store, COUNTRY_BY_CODE), 30);
     return;
   }
 
@@ -334,10 +338,10 @@ async function handleApi(req, res) {
   if (req.method === "GET" && pathname === "/api/levels") {
     const now = Date.now();
     const ONE_DAY = 24 * 60 * 60 * 1000;
-    sendJson(res, 200, [...store.levels].sort((left, right) => left.rank - right.rank).map((l) => ({
+    sendJsonPublic(res, [...store.levels].sort((left, right) => left.rank - right.rank).map((l) => ({
       ...l,
       isNew: l.createdAt ? (now - new Date(l.createdAt).getTime()) < ONE_DAY : false,
-    })));
+    })), 30);
     return;
   }
 
@@ -371,9 +375,18 @@ async function handleApi(req, res) {
       normalizeLevelRanks(store);
 
       const actualLevel = store.levels.find((l) => l.id === level.id);
+      const addedSorted = [...store.levels].sort((a, b) => a.rank - b.rank);
+      const addedAbove = addedSorted.find((l) => l.rank === actualLevel.rank - 1 && l.id !== actualLevel.id);
+      const addedBelow = addedSorted.find((l) => l.rank === actualLevel.rank + 1 && l.id !== actualLevel.id);
       appendLevelHistory(actualLevel, actualLevel.rank, {
-        ru: `Уровень добавлен в лист на позицию #${actualLevel.rank}`,
-        en: `Level added to the list at position #${actualLevel.rank}`,
+        ru: `placed at #${actualLevel.rank}`,
+        en: `placed at #${actualLevel.rank}`,
+      }, {
+        changeType: "added",
+        aboveId: addedAbove ? addedAbove.id : null,
+        aboveName: addedAbove ? addedAbove.name : null,
+        belowId: addedBelow ? addedBelow.id : null,
+        belowName: addedBelow ? addedBelow.name : null,
       });
 
       if (!store.siteSummary.spotlightLevelId) {
@@ -382,6 +395,7 @@ async function handleApi(req, res) {
 
       await writeStore(store);
       sendJson(res, 201, actualLevel);
+      notifyLevelAdded(actualLevel, { aboveName: addedAbove?.name, belowName: addedBelow?.name }).catch(() => {});
     } catch (error) {
       badRequest(res, error.message);
     }
@@ -405,7 +419,7 @@ async function handleApi(req, res) {
         return r;
       }),
     };
-    sendJson(res, 200, enrichedLevel);
+    sendJsonPublic(res, enrichedLevel, 30);
     return;
   }
 
@@ -451,10 +465,21 @@ async function handleApi(req, res) {
 
       const actualLevel = store.levels.find((l) => l.id === level.id);
       if (previousRank !== actualLevel.rank) {
+        const movedUp = actualLevel.rank < previousRank;
+        const sortedLevels = [...store.levels].sort((a, b) => a.rank - b.rank);
+        const movedAbove = sortedLevels.find((l) => l.rank === actualLevel.rank - 1 && l.id !== actualLevel.id);
+        const movedBelow = sortedLevels.find((l) => l.rank === actualLevel.rank + 1 && l.id !== actualLevel.id);
         appendLevelHistory(actualLevel, actualLevel.rank, {
-          ru: `Позиция изменена с #${previousRank} на #${actualLevel.rank}`,
-          en: `Position changed from #${previousRank} to #${actualLevel.rank}`,
+          ru: `#${previousRank} → #${actualLevel.rank}`,
+          en: `#${previousRank} → #${actualLevel.rank}`,
+        }, {
+          changeType: movedUp ? "moved_up" : "moved_down",
+          aboveId: movedAbove ? movedAbove.id : null,
+          aboveName: movedAbove ? movedAbove.name : null,
+          belowId: movedBelow ? movedBelow.id : null,
+          belowName: movedBelow ? movedBelow.name : null,
         });
+        notifyLevelMoved(actualLevel, previousRank, store.levels).catch(() => {});
       }
 
       await writeStore(store);
@@ -473,10 +498,12 @@ async function handleApi(req, res) {
     const index = store.levels.findIndex((entry) => entry.id === levelId);
     if (index === -1) { notFound(res, "Level not found"); return; }
 
+    const removedLevel = store.levels[index];
     store.levels.splice(index, 1);
     normalizeLevelRanks(store);
     await writeStore(store);
     sendJson(res, 200, { ok: true });
+    notifyLevelRemoved(removedLevel).catch(() => {});
     return;
   }
 
@@ -503,17 +530,17 @@ async function handleApi(req, res) {
   }
 
   if (req.method === "GET" && pathname === "/api/leaderboards/players") {
-    sendJson(res, 200, buildPlayerLeaderboard(store, COUNTRY_BY_CODE));
+    sendJsonPublic(res, buildPlayerLeaderboard(store, COUNTRY_BY_CODE), 30);
     return;
   }
 
   if (req.method === "GET" && pathname === "/api/leaderboards/countries") {
-    sendJson(res, 200, buildCountryLeaderboard(store, COUNTRY_BY_CODE));
+    sendJsonPublic(res, buildCountryLeaderboard(store, COUNTRY_BY_CODE), 30);
     return;
   }
 
   if (req.method === "GET" && pathname === "/api/rules") {
-    sendJson(res, 200, store.rules);
+    sendJsonPublic(res, store.rules, 300);
     return;
   }
 

@@ -8,10 +8,78 @@ import {
   renderError,
   renderLoading,
   t,
+  updateShellNav,
   updateShellUser,
 } from "/scripts/layout.js?v=5";
 
-const page = document.body.dataset.page || "home";
+// --- Client-side API cache ---
+const _apiCache = new Map();
+const CACHE_TTL = 60_000; // 60 seconds
+
+function apiCached(path) {
+  const hit = _apiCache.get(path);
+  if (hit && Date.now() - hit.ts < CACHE_TTL) return Promise.resolve(hit.data);
+  return api(path).then((data) => {
+    _apiCache.set(path, { data, ts: Date.now() });
+    return data;
+  });
+}
+
+function invalidateCache(...prefixes) {
+  for (const key of _apiCache.keys()) {
+    if (prefixes.some((p) => key.startsWith(p))) _apiCache.delete(key);
+  }
+}
+
+let page = (() => {
+  const bp = document.body.dataset.page;
+  if (bp) return bp;
+  const p = location.pathname.replace(/^\//, "") || "home";
+  const map = { "": "home", list: "list", level: "level", leaderboard: "leaderboard", submit: "submit", rules: "rules", moderation: "moderation", account: "account", user: "user", api: "api", accounts: "accounts", submissions: "submissions" };
+  return map[p] || "home";
+})();
+
+const ROUTE_MAP = {
+  "/": "home",
+  "/list": "list",
+  "/level": "level",
+  "/leaderboard": "leaderboard",
+  "/submit": "submit",
+  "/rules": "rules",
+  "/moderation": "moderation",
+  "/account": "account",
+  "/user": "user",
+  "/api": "api",
+  "/accounts": "accounts",
+  "/submissions": "submissions",
+};
+
+function pathToPage(pathname) {
+  return ROUTE_MAP[pathname] || "home";
+}
+
+function isInternalLink(href) {
+  try {
+    const url = new URL(href, location.origin);
+    return url.origin === location.origin && ROUTE_MAP.hasOwnProperty(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+async function navigateTo(href, push = true) {
+  const url = new URL(href, location.origin);
+  const newPage = pathToPage(url.pathname);
+  if (push) history.pushState(null, "", url.pathname + url.search);
+  page = newPage;
+  updateShellNav(page);
+  const content = document.getElementById("page-content");
+  if (content) {
+    content.innerHTML = renderLoading();
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  await renderPage();
+}
 
 let currentUser = null;
 let countries = [];
@@ -76,7 +144,7 @@ async function api(path, options = {}, { allowUnauthorized = false } = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(path, { ...options, headers });
+  const response = await fetch(path, { cache: "no-store", ...options, headers });
   const raw = await response.text();
   const payload = raw ? JSON.parse(raw) : null;
 
@@ -316,7 +384,7 @@ async function renderHome() {
   content.innerHTML = renderLoading();
 
   try {
-    const summary = await api("/api/site-summary");
+    const summary = await apiCached("/api/site-summary");
 
     content.innerHTML = `
       <section class="hero hero-compact">
@@ -345,13 +413,30 @@ async function renderHome() {
                       <ul class="recent-changes-list">
                         ${group.items
                           .map(
-                            (item) => `
+                            (item) => {
+                              const ct = item.changeType;
+                              const iconHtml = ct === "moved_up"
+                                ? `<span class="change-icon change-icon--up">↑</span>`
+                                : ct === "moved_down"
+                                  ? `<span class="change-icon change-icon--down">↓</span>`
+                                  : `<span class="change-dot"></span>`;
+                              const noteText = escapeHtml(typeof item.text === "object" ? localize(item.text) : item.text);
+                              const aboveHtml = item.aboveName
+                                ? `<span class="change-neighbor-label">${copy("над ним", "above it")}</span> <a href="/level?id=${encodeURIComponent(item.aboveId || "")}" class="change-neighbor-link">${escapeHtml(item.aboveName)}</a>`
+                                : "";
+                              const belowHtml = item.belowName
+                                ? `<span class="change-neighbor-label">${copy("под ним", "below it")}</span> <a href="/level?id=${encodeURIComponent(item.belowId || "")}" class="change-neighbor-link">${escapeHtml(item.belowName)}</a>`
+                                : "";
+                              const neighborHtml = (aboveHtml || belowHtml)
+                                ? `<span class="change-neighbors">${[aboveHtml, belowHtml].filter(Boolean).join('<span class="change-sep">,</span> ')}</span>`
+                                : "";
+                              return `
                               <li class="recent-change-item">
-                                <span class="change-dot"></span>
-                                <a href="/level?id=${encodeURIComponent(item.levelId || "")}" class="highlight">${escapeHtml(typeof item.levelName === "object" ? localize(item.levelName) : item.levelName)}</a>
-                                <span>${escapeHtml(typeof item.text === "object" ? localize(item.text) : item.text)}</span>
+                                ${iconHtml}
+                                <a href="/level?id=${encodeURIComponent(item.levelId || "")}" class="change-level-link">${escapeHtml(typeof item.levelName === "object" ? localize(item.levelName) : item.levelName)}</a>
+                                <span class="change-note">${noteText}</span>${neighborHtml}
                               </li>
-                            `,
+                            `},
                           )
                           .join("")}
                       </ul>
@@ -389,7 +474,7 @@ async function renderList() {
   content.innerHTML = renderLoading();
 
   try {
-    const levels = await api("/api/levels");
+    const levels = await apiCached("/api/levels");
     const state = { search: "", segment: "all" };
 
     const render = () => {
@@ -513,15 +598,16 @@ async function renderLevel() {
       <a class="back-link" href="/list">${icon("arrowRight")} ${t("backToList")}</a>
 
       <div class="video-container">
-        <div class="iframe-container">
-          <iframe
-            src="https://www.youtube-nocookie.com/embed/${escapeHtml(level.youtubeId)}?rel=0"
-            title="${escapeHtml(level.name)}"
-            loading="lazy"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            referrerpolicy="strict-origin-when-cross-origin"
-            allowfullscreen
-          ></iframe>
+        <div class="iframe-container yt-facade" data-yt-id="${escapeHtml(level.youtubeId)}">
+          <img
+            class="yt-thumb"
+            src="https://i.ytimg.com/vi/${escapeHtml(level.youtubeId)}/maxresdefault.jpg"
+            alt="${escapeHtml(level.name)}"
+            onerror="this.src='https://i.ytimg.com/vi/${escapeHtml(level.youtubeId)}/hqdefault.jpg'"
+          />
+          <button class="yt-play" aria-label="Play video">
+            <svg viewBox="0 0 68 48" width="68" height="48"><path fill="#ff0000" d="M66.5 7.7a8.5 8.5 0 0 0-6-6C56 0 34 0 34 0S12 0 7.5 1.7a8.5 8.5 0 0 0-6 6C0 12.1 0 24 0 24s0 11.9 1.5 16.3a8.5 8.5 0 0 0 6 6C12 48 34 48 34 48s22 0 26.5-1.7a8.5 8.5 0 0 0 6-6C68 35.9 68 24 68 24s0-11.9-1.5-16.3z"/><path fill="#fff" d="M45 24 27 14v20"/></svg>
+          </button>
         </div>
       </div>
 
@@ -695,6 +781,15 @@ async function renderLevel() {
         }
       });
     }
+
+    const ytFacade = content.querySelector(".yt-facade");
+    if (ytFacade) {
+      ytFacade.addEventListener("click", () => {
+        const ytId = ytFacade.dataset.ytId;
+        ytFacade.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(ytId)}?autoplay=1&rel=0" title="Video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="border:0;width:100%;height:100%"></iframe>`;
+        ytFacade.classList.remove("yt-facade");
+      });
+    }
   } catch (error) {
     content.innerHTML = renderError(getErrorMessage(error));
   }
@@ -706,8 +801,8 @@ async function renderLeaderboard() {
 
   try {
     const [players, countriesData] = await Promise.all([
-      api("/api/leaderboards/players"),
-      api("/api/leaderboards/countries"),
+      apiCached("/api/leaderboards/players"),
+      apiCached("/api/leaderboards/countries"),
     ]);
 
     const state = { mode: players.length ? "players" : "countries", search: "", selectedId: "" };
@@ -834,7 +929,7 @@ async function renderRules() {
   content.innerHTML = renderLoading();
 
   try {
-    const rules = await api("/api/rules");
+    const rules = await apiCached("/api/rules");
 
     content.innerHTML = `
       <div class="rules-layout">
@@ -879,7 +974,7 @@ async function renderSubmit() {
   content.innerHTML = renderLoading();
 
   try {
-    const levels = await api("/api/levels");
+    const levels = await apiCached("/api/levels");
     const state = { type: levels.length ? "record" : "level", values: {}, message: "", tone: "" };
 
     const captureValues = () => {
@@ -1265,6 +1360,7 @@ async function renderModeration() {
           }
           setFlash(t("createLevelSuccess"), "success");
           toastNotification(t("createLevelSuccess"), "success");
+          invalidateCache("/api/levels", "/api/leaderboards", "/api/site-summary");
           await renderModeration();
         } catch (error) {
           state.message = getErrorMessage(error);
@@ -1289,6 +1385,7 @@ async function renderModeration() {
           await api(`/api/levels/${encodeURIComponent(state.selectedLevelId)}`, { method: "DELETE" });
           toastNotification(copy("Уровень удалён", "Level deleted"), "success");
           setFlash(copy("Уровень удалён.", "Level deleted."), "success");
+          invalidateCache("/api/levels", "/api/leaderboards", "/api/site-summary");
           await renderModeration();
         } catch (error) {
           toastNotification(getErrorMessage(error), "error");
@@ -1346,7 +1443,7 @@ async function renderAccount() {
                 ${renderField(t("fieldNickname"), '<input name="nickname" required />')}
                 ${renderField(t("fieldEmail"), '<input name="email" type="email" required />')}
                 ${renderField(t("fieldPassword"), '<input name="password" type="password" required />')}
-                ${renderField(t("fieldCountry"), `<select name="countryCode"><option value="">${escapeHtml(copy("— Выберите страну —", "— Select country —"))}</option>${countriesOptions("")}</select>`)}
+                ${renderField(t("fieldCountry"), `<select name="countryCode" required><option value="">${escapeHtml(copy("— Выберите страну —", "— Select country —"))}</option>${countriesOptions("")}</select>`)}
                 ${formMessageMarkup(state.registerMessage, state.registerTone)}
                 <button class="btn btn-primary" type="submit">${t("registerButton")}</button>
               </form>
@@ -2017,79 +2114,99 @@ function renderApiDocs() {
   const content = document.getElementById("page-content");
   const baseUrl = `${window.location.protocol}//${window.location.host}`;
 
+  const sec = (title) => `<div class="api-docs-section-header">${title}</div>`;
+  const badge = (method) => `<span class="api-method ${method.toLowerCase()}">${method}</span>`;
+  const authBadge = (label) => `<span class="api-auth-badge">${label}</span>`;
+
   content.innerHTML = `
     <div class="api-docs">
-      <section class="panel">
-        <div class="panel-title">${icon("globe")} ${copy("Публичный API", "Public API")}</div>
-        <p class="submission-intro">${copy(
-          "Nerfed DemonList предоставляет открытый REST API для получения данных о уровнях, игроках и рекордах. Аутентификация не требуется.",
-          "Nerfed DemonList provides a public REST API to access data about levels, players, and records. No authentication is required."
-        )}</p>
 
+      <!-- Overview -->
+      <section class="panel">
+        <div class="panel-title">${icon("globe")} ${copy("REST API", "REST API")}</div>
+        <p class="submission-intro">${copy(
+          "Nerfed DemonList предоставляет полноценный REST API. Публичные эндпоинты доступны без аутентификации. Для защищённых эндпоинтов передавайте токен в заголовке запроса.",
+          "Nerfed DemonList provides a full REST API. Public endpoints require no authentication. For protected endpoints, send a token in the request header."
+        )}</p>
         <div class="api-section">
           <h3>${copy("Базовый URL", "Base URL")}</h3>
-          <pre class="api-code-block"><code>${escapeHtml(baseUrl)}/api/v1</code></pre>
+          <pre class="api-code-block"><code>${escapeHtml(baseUrl)}/api</code></pre>
         </div>
-
+        <div class="api-section">
+          <h3>${copy("Аутентификация", "Authentication")}</h3>
+          <p>${copy(
+            "Защищённые эндпоинты требуют заголовок <code>Authorization</code> с токеном, полученным при входе или регистрации.",
+            "Protected endpoints require an <code>Authorization</code> header with a token obtained via login or register."
+          )}</p>
+          <pre class="api-code-block"><code>Authorization: Bearer &lt;token&gt;</code></pre>
+        </div>
         <div class="api-section">
           <h3>${copy("Формат ответа", "Response Format")}</h3>
-          <p>${copy("Все ответы возвращаются в формате JSON. В случае ошибки возвращается объект с полем <code>error</code>.", "All responses are returned in JSON format. On error, an object with an <code>error</code> field is returned.")}</p>
+          <p>${copy(
+            "Все ответы — JSON. При ошибке возвращается объект с полем <code>error</code>.",
+            "All responses are JSON. On error, an object with an <code>error</code> field is returned."
+          )}</p>
+          <pre class="api-code-block"><code>{ "error": "Not found" }</code></pre>
+        </div>
+        <div class="api-section">
+          <h3>${copy("Роли пользователей", "User Roles")}</h3>
+          <table class="api-table">
+            <thead><tr><th>${copy("Роль", "Role")}</th><th>${copy("Описание", "Description")}</th></tr></thead>
+            <tbody>
+              <tr><td><code>player</code></td><td>${copy("Обычный зарегистрированный игрок", "Regular registered player")}</td></tr>
+              <tr><td><code>moderator</code></td><td>${copy("Может управлять уровнями, рекордами и заявками", "Can manage levels, records and submissions")}</td></tr>
+              <tr><td><code>admin</code></td><td>${copy("Полный доступ, включая управление пользователями", "Full access including user management")}</td></tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
-      <section class="panel">
-        <div class="panel-title"><span class="api-method get">GET</span> /api/v1/levels</div>
-        <p class="submission-intro">${copy("Возвращает список всех уровней, отсортированных по рангу.", "Returns a list of all levels sorted by rank.")}</p>
+      <!-- V1 Public API -->
+      ${sec(copy("Публичный V1 API (для сторонних проектов)", "Public V1 API (for third-party projects)"))}
 
-        <h4>${copy("Пример ответа", "Example Response")}</h4>
+      <section class="panel">
+        <div class="panel-title">${badge("GET")} /api/v1/levels</div>
+        <p class="submission-intro">${copy("Список всех уровней, отсортированных по рангу. Предназначен для сторонних интеграций.", "List of all levels sorted by rank. Intended for third-party integrations.")}</p>
         <pre class="api-code-block"><code>[
   {
-    "id": "example-level",
+    "id": "silent-clubstep",
     "rank": 1,
-    "name": "Example Level",
-    "creator": "PlayerName",
-    "verifier": "VerifierName",
-    "originalName": "Original Level",
+    "name": "Silent Clubstep",
+    "creator": "Creator",
+    "verifier": "Verifier",
+    "originalName": "Clubstep",
     "segment": "main",
-    "score100": "250",
+    "score100": "1000",
+    "minProgress": null,
+    "minProgressScore": null,
     "nerfedLevelId": "12345678",
     "originalLevelId": "87654321",
-    "recordsCount": 5
+    "recordsCount": 12
   }
 ]</code></pre>
-
-        <h4>${copy("Поля ответа", "Response Fields")}</h4>
         <table class="api-table">
           <thead><tr><th>${copy("Поле", "Field")}</th><th>${copy("Тип", "Type")}</th><th>${copy("Описание", "Description")}</th></tr></thead>
           <tbody>
-            <tr><td><code>id</code></td><td>string</td><td>${copy("Уникальный идентификатор уровня (slug)", "Unique level identifier (slug)")}</td></tr>
+            <tr><td><code>id</code></td><td>string</td><td>${copy("Уникальный slug уровня", "Unique level slug")}</td></tr>
             <tr><td><code>rank</code></td><td>number</td><td>${copy("Позиция в листе", "Position in the list")}</td></tr>
             <tr><td><code>name</code></td><td>string</td><td>${copy("Название нерфнутого уровня", "Nerfed level name")}</td></tr>
             <tr><td><code>creator</code></td><td>string</td><td>${copy("Ник создателя", "Creator nickname")}</td></tr>
             <tr><td><code>verifier</code></td><td>string</td><td>${copy("Ник верификатора", "Verifier nickname")}</td></tr>
             <tr><td><code>originalName</code></td><td>string</td><td>${copy("Название оригинального уровня", "Original level name")}</td></tr>
-            <tr><td><code>segment</code></td><td>string</td><td>${copy("Сегмент: main, extended или legacy", "Segment: main, extended, or legacy")}</td></tr>
-            <tr><td><code>score100</code></td><td>string</td><td>${copy("Очки за 100% прохождение", "Points for 100% completion")}</td></tr>
+            <tr><td><code>segment</code></td><td>string</td><td>${copy("Сегмент: main, extended, legacy", "Segment: main, extended, legacy")}</td></tr>
+            <tr><td><code>score100</code></td><td>string</td><td>${copy("Очки за 100%", "Points for 100%")}</td></tr>
+            <tr><td><code>minProgress</code></td><td>number|null</td><td>${copy("Мин. % для начисления очков", "Min % for scoring")}</td></tr>
+            <tr><td><code>minProgressScore</code></td><td>number|null</td><td>${copy("Очки за минимальный %", "Points at minimum %")}</td></tr>
             <tr><td><code>nerfedLevelId</code></td><td>string</td><td>${copy("GD ID нерфнутого уровня", "GD ID of the nerfed level")}</td></tr>
-            <tr><td><code>originalLevelId</code></td><td>string</td><td>${copy("GD ID оригинального уровня", "GD ID of the original level")}</td></tr>
-            <tr><td><code>minProgress</code></td><td>number|null</td><td>${copy("Минимальный процент для начисления очков (если задан)", "Minimum progress percentage for scoring (if set)")}</td></tr>
-            <tr><td><code>minProgressScore</code></td><td>number|null</td><td>${copy("Очки за минимальный прогресс", "Points awarded at minimum progress")}</td></tr>
-            <tr><td><code>recordsCount</code></td><td>number</td><td>${copy("Количество принятых рекордов", "Number of accepted records")}</td></tr>
+            <tr><td><code>originalLevelId</code></td><td>string</td><td>${copy("GD ID оригинала", "GD ID of original level")}</td></tr>
+            <tr><td><code>recordsCount</code></td><td>number</td><td>${copy("Кол-во принятых рекордов", "Number of accepted records")}</td></tr>
           </tbody>
         </table>
-
-        <h4>${copy("Формула начисления очков", "Scoring Formula")}</h4>
-        <p>${copy(
-          "Top-1 = 1000 очков, каждый следующий ранг -40 очков. Если у уровня задан <code>minProgress</code>, при прохождении с процентом ниже 100% начисляются пропорциональные очки от <code>minProgressScore</code> до <code>score100</code>.",
-          "Top-1 = 1000 points, each subsequent rank -40 points. If a level has <code>minProgress</code> set, completions below 100% receive proportional points from <code>minProgressScore</code> to <code>score100</code>."
-        )}</p>
       </section>
 
       <section class="panel">
-        <div class="panel-title"><span class="api-method get">GET</span> /api/v1/players</div>
-        <p class="submission-intro">${copy("Возвращает таблицу лидеров игроков.", "Returns the player leaderboard.")}</p>
-
-        <h4>${copy("Пример ответа", "Example Response")}</h4>
+        <div class="panel-title">${badge("GET")} /api/v1/players</div>
+        <p class="submission-intro">${copy("Таблица лидеров игроков (упрощённый формат).", "Player leaderboard in a simplified format.")}</p>
         <pre class="api-code-block"><code>[
   {
     "rank": 1,
@@ -2097,67 +2214,464 @@ function renderApiDocs() {
     "countryCode": "US",
     "score": 1250.5,
     "completions": 15,
-    "hardest": "Hardest Level Name"
+    "hardest": "Silent Clubstep"
   }
 ]</code></pre>
-
-        <h4>${copy("Поля ответа", "Response Fields")}</h4>
         <table class="api-table">
           <thead><tr><th>${copy("Поле", "Field")}</th><th>${copy("Тип", "Type")}</th><th>${copy("Описание", "Description")}</th></tr></thead>
           <tbody>
-            <tr><td><code>rank</code></td><td>number</td><td>${copy("Позиция в лидерборде", "Leaderboard position")}</td></tr>
+            <tr><td><code>rank</code></td><td>number</td><td>${copy("Позиция в лидерборде", "Leaderboard rank")}</td></tr>
             <tr><td><code>nickname</code></td><td>string</td><td>${copy("Никнейм игрока", "Player nickname")}</td></tr>
-            <tr><td><code>countryCode</code></td><td>string</td><td>${copy("Код страны (ISO 3166-1 alpha-2)", "Country code (ISO 3166-1 alpha-2)")}</td></tr>
+            <tr><td><code>countryCode</code></td><td>string</td><td>${copy("Код страны ISO 3166-1 alpha-2", "Country code ISO 3166-1 alpha-2")}</td></tr>
             <tr><td><code>score</code></td><td>number</td><td>${copy("Общий счёт очков", "Total score")}</td></tr>
             <tr><td><code>completions</code></td><td>number</td><td>${copy("Количество 100% прохождений", "Number of 100% completions")}</td></tr>
-            <tr><td><code>hardest</code></td><td>string</td><td>${copy("Название сложнейшего уровня", "Hardest level name")}</td></tr>
+            <tr><td><code>hardest</code></td><td>string</td><td>${copy("Сложнейший пройденный уровень", "Hardest completed level")}</td></tr>
           </tbody>
         </table>
       </section>
 
       <section class="panel">
-        <div class="panel-title"><span class="api-method get">GET</span> /api/v1/levels/:id/records</div>
-        <p class="submission-intro">${copy("Возвращает список принятых рекордов для конкретного уровня.", "Returns accepted records for a specific level.")}</p>
-
-        <h4>${copy("Параметры пути", "Path Parameters")}</h4>
+        <div class="panel-title">${badge("GET")} /api/v1/levels/:id/records</div>
+        <p class="submission-intro">${copy("Принятые рекорды для конкретного уровня.", "Accepted records for a specific level.")}</p>
         <table class="api-table">
-          <thead><tr><th>${copy("Параметр", "Parameter")}</th><th>${copy("Тип", "Type")}</th><th>${copy("Описание", "Description")}</th></tr></thead>
+          <thead><tr><th>${copy("Параметр пути", "Path Param")}</th><th>${copy("Описание", "Description")}</th></tr></thead>
           <tbody>
-            <tr><td><code>:id</code></td><td>string</td><td>${copy("ID уровня (slug из /api/v1/levels)", "Level ID (slug from /api/v1/levels)")}</td></tr>
+            <tr><td><code>:id</code></td><td>${copy("Slug уровня из /api/v1/levels", "Level slug from /api/v1/levels")}</td></tr>
           </tbody>
         </table>
-
-        <h4>${copy("Пример ответа", "Example Response")}</h4>
         <pre class="api-code-block"><code>[
   {
     "player": "PlayerName",
     "progress": "100%",
-    "videoUrl": "https://youtube.com/watch?v=...",
+    "videoUrl": "https://youtu.be/...",
     "date": "2026-03-09T12:00:00.000Z"
   }
 ]</code></pre>
+      </section>
 
-        <h4>${copy("Поля ответа", "Response Fields")}</h4>
+      <!-- Levels -->
+      ${sec(copy("Уровни", "Levels"))}
+
+      <section class="panel">
+        <div class="panel-title">${badge("GET")} /api/levels</div>
+        <p class="submission-intro">${copy("Полный список уровней с расширенными данными, включая флаг isNew.", "Full level list with extended data including the isNew flag.")}</p>
+        <pre class="api-code-block"><code>[
+  {
+    "id": "silent-clubstep",
+    "rank": 1,
+    "name": "Silent Clubstep",
+    "creator": "Creator",
+    "verifier": "Verifier",
+    "originalName": "Clubstep",
+    "segment": "main",
+    "score100": "1000",
+    "minProgress": null,
+    "minProgressScore": null,
+    "nerfedLevelId": "12345678",
+    "originalLevelId": "87654321",
+    "youtubeId": "dQw4w9WgXcQ",
+    "verificationUrl": "https://youtu.be/dQw4w9WgXcQ",
+    "thumbnailUrl": "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg",
+    "creatorId": "uuid-...",
+    "verifierId": "uuid-...",
+    "isNew": false,
+    "records": [],
+    "history": [],
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-03-01T00:00:00.000Z"
+  }
+]</code></pre>
         <table class="api-table">
           <thead><tr><th>${copy("Поле", "Field")}</th><th>${copy("Тип", "Type")}</th><th>${copy("Описание", "Description")}</th></tr></thead>
           <tbody>
-            <tr><td><code>player</code></td><td>string</td><td>${copy("Никнейм игрока", "Player nickname")}</td></tr>
-            <tr><td><code>progress</code></td><td>string</td><td>${copy("Процент прохождения (например, '100%' или '78%')", "Completion progress (e.g., '100%' or '78%')")}</td></tr>
-            <tr><td><code>videoUrl</code></td><td>string</td><td>${copy("Ссылка на видео-доказательство", "Link to video proof")}</td></tr>
-            <tr><td><code>date</code></td><td>string</td><td>${copy("Дата принятия рекорда (ISO 8601)", "Record acceptance date (ISO 8601)")}</td></tr>
+            <tr><td><code>isNew</code></td><td>boolean</td><td>${copy("true если уровень добавлен менее 24 часов назад", "true if level was added less than 24h ago")}</td></tr>
+            <tr><td><code>youtubeId</code></td><td>string</td><td>${copy("YouTube ID видео", "YouTube video ID")}</td></tr>
+            <tr><td><code>verificationUrl</code></td><td>string</td><td>${copy("Ссылка на видео верификации", "Verification video URL")}</td></tr>
+            <tr><td><code>thumbnailUrl</code></td><td>string</td><td>${copy("URL превью уровня", "Level thumbnail URL")}</td></tr>
+            <tr><td><code>creatorId</code></td><td>string|null</td><td>${copy("UUID создателя (если зарегистрирован)", "Creator UUID (if registered)")}</td></tr>
+            <tr><td><code>verifierId</code></td><td>string|null</td><td>${copy("UUID верификатора (если зарегистрирован)", "Verifier UUID (if registered)")}</td></tr>
+            <tr><td><code>records</code></td><td>array</td><td>${copy("Пустой массив в списке; полные рекорды — в /api/levels/:id", "Empty in list view; full records in /api/levels/:id")}</td></tr>
+            <tr><td><code>history</code></td><td>array</td><td>${copy("История изменений позиции", "Position change history")}</td></tr>
           </tbody>
         </table>
       </section>
 
       <section class="panel">
+        <div class="panel-title">${badge("GET")} /api/levels/:id</div>
+        <p class="submission-intro">${copy("Один уровень с полным списком рекордов и аватарами игроков.", "Single level with full records list and player avatars.")}</p>
+        <table class="api-table">
+          <thead><tr><th>${copy("Параметр пути", "Path Param")}</th><th>${copy("Описание", "Description")}</th></tr></thead>
+          <tbody>
+            <tr><td><code>:id</code></td><td>${copy("Slug уровня", "Level slug")}</td></tr>
+          </tbody>
+        </table>
+        <pre class="api-code-block"><code>{
+  "id": "silent-clubstep",
+  "rank": 1,
+  "name": "Silent Clubstep",
+  ...
+  "records": [
+    {
+      "id": "uuid-...",
+      "player": "PlayerName",
+      "userId": "uuid-...",
+      "progress": "100%",
+      "videoUrl": "https://youtu.be/...",
+      "date": "2026-03-09T12:00:00.000Z",
+      "avatarUrl": "/uploads/abc.jpg",
+      "countryCode": "RU"
+    }
+  ],
+  "history": [
+    {
+      "rank": 1,
+      "date": "2026-01-01T00:00:00.000Z",
+      "note": { "ru": "...", "en": "..." }
+    }
+  ]
+}</code></pre>
+      </section>
+
+      <!-- Leaderboards -->
+      ${sec(copy("Лидерборды", "Leaderboards"))}
+
+      <section class="panel">
+        <div class="panel-title">${badge("GET")} /api/leaderboards/players</div>
+        <p class="submission-intro">${copy("Полный рейтинг игроков с детальными данными.", "Full player ranking with detailed data.")}</p>
+        <pre class="api-code-block"><code>[
+  {
+    "rank": 1,
+    "userId": "uuid-...",
+    "nickname": "TopPlayer",
+    "countryCode": "RU",
+    "country": "Russia",
+    "flag": "🇷🇺",
+    "avatarUrl": "/uploads/abc.jpg",
+    "score": 2500.75,
+    "completions": 3,
+    "hardest": "Silent Clubstep",
+    "hardestId": "silent-clubstep",
+    "hardestRank": 1
+  }
+]</code></pre>
+        <table class="api-table">
+          <thead><tr><th>${copy("Поле", "Field")}</th><th>${copy("Тип", "Type")}</th><th>${copy("Описание", "Description")}</th></tr></thead>
+          <tbody>
+            <tr><td><code>rank</code></td><td>number</td><td>${copy("Позиция в рейтинге", "Ranking position")}</td></tr>
+            <tr><td><code>userId</code></td><td>string</td><td>${copy("UUID профиля игрока", "Player profile UUID")}</td></tr>
+            <tr><td><code>nickname</code></td><td>string</td><td>${copy("Никнейм", "Nickname")}</td></tr>
+            <tr><td><code>countryCode</code></td><td>string</td><td>${copy("Код страны", "Country code")}</td></tr>
+            <tr><td><code>country</code></td><td>string</td><td>${copy("Название страны", "Country name")}</td></tr>
+            <tr><td><code>flag</code></td><td>string</td><td>${copy("Эмодзи флага страны", "Country flag emoji")}</td></tr>
+            <tr><td><code>avatarUrl</code></td><td>string</td><td>${copy("URL аватара", "Avatar URL")}</td></tr>
+            <tr><td><code>score</code></td><td>number</td><td>${copy("Суммарный счёт", "Total score")}</td></tr>
+            <tr><td><code>completions</code></td><td>number</td><td>${copy("Количество 100% прохождений", "Number of 100% completions")}</td></tr>
+            <tr><td><code>hardest</code></td><td>string</td><td>${copy("Название сложнейшего уровня", "Hardest level name")}</td></tr>
+            <tr><td><code>hardestId</code></td><td>string</td><td>${copy("Slug сложнейшего уровня", "Hardest level slug")}</td></tr>
+            <tr><td><code>hardestRank</code></td><td>number</td><td>${copy("Ранг сложнейшего уровня", "Hardest level rank")}</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">${badge("GET")} /api/leaderboards/countries</div>
+        <p class="submission-intro">${copy("Рейтинг стран по суммарным очкам игроков.", "Country ranking by total player scores.")}</p>
+        <pre class="api-code-block"><code>[
+  {
+    "rank": 1,
+    "countryCode": "RU",
+    "country": "Russia",
+    "flag": "🇷🇺",
+    "score": 5430.5,
+    "players": 4
+  }
+]</code></pre>
+      </section>
+
+      <!-- Misc Public -->
+      ${sec(copy("Прочие публичные эндпоинты", "Other Public Endpoints"))}
+
+      <section class="panel">
+        <div class="panel-title">${badge("GET")} /api/site-summary</div>
+        <p class="submission-intro">${copy("Статистика сайта и данные для главной страницы.", "Site statistics and homepage data.")}</p>
+        <pre class="api-code-block"><code>{
+  "totalLevels": 25,
+  "totalPlayers": 120,
+  "totalRecords": 340,
+  "spotlightLevelId": "silent-clubstep",
+  "topPlayer": {
+    "nickname": "TopPlayer",
+    "score": 2500.75,
+    "countryCode": "RU"
+  }
+}</code></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">${badge("GET")} /api/countries</div>
+        <p class="submission-intro">${copy("Список всех поддерживаемых стран.", "List of all supported countries.")}</p>
+        <pre class="api-code-block"><code>[
+  { "code": "RU", "name": "Russia", "flag": "🇷🇺" },
+  { "code": "US", "name": "United States", "flag": "🇺🇸" }
+]</code></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">${badge("GET")} /api/rules</div>
+        <p class="submission-intro">${copy("Правила листа (поддерживает русский и английский языки).", "List rules (supports Russian and English).")}</p>
+        <pre class="api-code-block"><code>{
+  "ru": "# Правила\\n...",
+  "en": "# Rules\\n..."
+}</code></pre>
+      </section>
+
+      <!-- Users (public) -->
+      ${sec(copy("Профили пользователей", "User Profiles"))}
+
+      <section class="panel">
+        <div class="panel-title">${badge("GET")} /api/users/:id</div>
+        <p class="submission-intro">${copy(
+          "Профиль пользователя по UUID или никнейму. Email виден только самому пользователю или администратору.",
+          "User profile by UUID or nickname. Email is only visible to the user themselves or an admin."
+        )}</p>
+        <table class="api-table">
+          <thead><tr><th>${copy("Параметр пути", "Path Param")}</th><th>${copy("Описание", "Description")}</th></tr></thead>
+          <tbody>
+            <tr><td><code>:id</code></td><td>${copy("UUID пользователя или его никнейм", "User UUID or nickname")}</td></tr>
+          </tbody>
+        </table>
+        <pre class="api-code-block"><code>{
+  "id": "uuid-...",
+  "nickname": "PlayerName",
+  "role": "player",
+  "countryCode": "RU",
+  "country": "Russia",
+  "flag": "🇷🇺",
+  "avatarUrl": "/uploads/abc.jpg",
+  "bio": { "ru": "...", "en": "..." },
+  "isBanned": false,
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-03-01T00:00:00.000Z",
+  "score": 1500.25,
+  "completions": 2,
+  "hardest": "Silent Clubstep",
+  "hardestId": "silent-clubstep",
+  "hardestRank": 1,
+  "records": [
+    {
+      "levelId": "silent-clubstep",
+      "levelName": "Silent Clubstep",
+      "levelRank": 1,
+      "progress": "100%",
+      "videoUrl": "https://youtu.be/...",
+      "date": "2026-03-09T12:00:00.000Z"
+    }
+  ],
+  "verifiedLevels": [
+    { "id": "silent-clubstep", "name": "Silent Clubstep", "rank": 1 }
+  ],
+  "createdLevels": [
+    { "id": "silent-clubstep", "name": "Silent Clubstep", "rank": 1 }
+  ]
+}</code></pre>
+      </section>
+
+      <!-- Auth -->
+      ${sec(copy("Аутентификация", "Authentication"))}
+
+      <section class="panel">
+        <div class="panel-title">${badge("POST")} /api/auth/register</div>
+        <p class="submission-intro">${copy("Создание нового аккаунта. Возвращает токен и профиль.", "Create a new account. Returns a token and profile.")}</p>
+        <h4>${copy("Тело запроса", "Request Body")}</h4>
+        <pre class="api-code-block"><code>{
+  "nickname": "PlayerName",       // ${copy("обязательно, 3+ символа, [a-zA-Z0-9_-]", "required, 3+ chars, [a-zA-Z0-9_-]")}
+  "email": "player@example.com",  // ${copy("обязательно", "required")}
+  "password": "mypassword",       // ${copy("обязательно, 8+ символов", "required, 8+ chars")}
+  "countryCode": "RU",            // ${copy("обязательно, ISO 3166-1 alpha-2", "required, ISO 3166-1 alpha-2")}
+  "avatarUrl": "https://...",     // ${copy("необязательно, URL аватара", "optional, avatar URL")}
+  "avatarData": "data:image/..."  // ${copy("необязательно, base64 изображение", "optional, base64 image")}
+}</code></pre>
+        <pre class="api-code-block"><code>// HTTP 201
+{
+  "token": "hex-token...",
+  "user": { "id": "uuid-...", "nickname": "PlayerName", "email": "...", ... }
+}</code></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">${badge("POST")} /api/auth/login</div>
+        <p class="submission-intro">${copy("Вход в аккаунт. Принимает никнейм или email.", "Login. Accepts nickname or email.")}</p>
+        <pre class="api-code-block"><code>{
+  "identifier": "PlayerName",   // ${copy("никнейм или email", "nickname or email")}
+  "password": "mypassword"
+}</code></pre>
+        <pre class="api-code-block"><code>// HTTP 200
+{
+  "token": "hex-token...",
+  "user": { "id": "uuid-...", "nickname": "PlayerName", "email": "...", ... }
+}</code></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">${badge("POST")} /api/auth/logout ${authBadge(copy("требует токен", "requires token"))}</div>
+        <p class="submission-intro">${copy("Завершает текущую сессию и инвалидирует токен.", "Ends the current session and invalidates the token.")}</p>
+        <pre class="api-code-block"><code>// HTTP 200
+{ "ok": true }</code></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">${badge("GET")} /api/auth/session ${authBadge(copy("требует токен", "requires token"))}</div>
+        <p class="submission-intro">${copy("Проверяет текущую сессию. Возвращает профиль если токен действителен.", "Checks the current session. Returns profile if token is valid.")}</p>
+        <pre class="api-code-block"><code>// HTTP 200 — ${copy("авторизован", "authenticated")}
+{ "user": { "id": "uuid-...", "nickname": "PlayerName", ... } }
+
+// HTTP 200 — ${copy("не авторизован", "not authenticated")}
+{ "user": null }</code></pre>
+      </section>
+
+      <!-- Account -->
+      ${sec(copy("Управление аккаунтом", "Account Management"))}
+
+      <section class="panel">
+        <div class="panel-title">${badge("PATCH")} /api/account/profile ${authBadge(copy("требует токен", "requires token"))}</div>
+        <p class="submission-intro">${copy("Обновление профиля текущего пользователя.", "Update the current user's profile.")}</p>
+        <pre class="api-code-block"><code>{
+  "countryCode": "US",            // ${copy("необязательно", "optional")}
+  "avatarUrl": "https://...",     // ${copy("необязательно", "optional")}
+  "avatarData": "data:image/...", // ${copy("необязательно, base64", "optional, base64")}
+  "bioRu": "Мой профиль",         // ${copy("необязательно, текст на русском", "optional, Russian bio")}
+  "bioEn": "My profile"           // ${copy("необязательно, текст на английском", "optional, English bio")}
+}</code></pre>
+        <pre class="api-code-block"><code>// HTTP 200
+{ "user": { ... } }</code></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">${badge("POST")} /api/account/password ${authBadge(copy("требует токен", "requires token"))}</div>
+        <p class="submission-intro">${copy("Смена пароля.", "Change password.")}</p>
+        <pre class="api-code-block"><code>{
+  "currentPassword": "oldpassword",
+  "nextPassword": "newpassword"   // ${copy("8+ символов", "8+ chars")}
+}</code></pre>
+        <pre class="api-code-block"><code>// HTTP 200
+{ "ok": true }</code></pre>
+      </section>
+
+      <!-- Submissions -->
+      ${sec(copy("Заявки", "Submissions"))}
+
+      <section class="panel">
+        <div class="panel-title">${badge("GET")} /api/submissions ${authBadge(copy("требует токен", "requires token"))}</div>
+        <p class="submission-intro">${copy(
+          "Получение заявок. Обычный игрок видит только свои. Модератор/admin получает все с пагинацией.",
+          "Get submissions. Regular players see only their own. Moderator/admin gets all with pagination."
+        )}</p>
+        <table class="api-table">
+          <thead><tr><th>${copy("Query параметр", "Query Param")}</th><th>${copy("Тип", "Type")}</th><th>${copy("Описание", "Description")}</th></tr></thead>
+          <tbody>
+            <tr><td><code>page</code></td><td>number</td><td>${copy("Страница (по умолчанию 1)", "Page (default 1)")}</td></tr>
+            <tr><td><code>limit</code></td><td>number</td><td>${copy("Записей на странице (1–50, по умолчанию 15)", "Items per page (1–50, default 15)")}</td></tr>
+            <tr><td><code>q</code></td><td>string</td><td>${copy("Поиск по игроку, уровню или ID", "Search by player, level or ID")}</td></tr>
+            <tr><td><code>status</code></td><td>string</td><td>${copy("Фильтр: pending, approved, rejected, banned", "Filter: pending, approved, rejected, banned")}</td></tr>
+            <tr><td><code>type</code></td><td>string</td><td>${copy("Фильтр: record или level", "Filter: record or level")}</td></tr>
+            <tr><td><code>sort</code></td><td>string</td><td>${copy("Сортировка: date, status, type, player", "Sort: date, status, type, player")}</td></tr>
+            <tr><td><code>dir</code></td><td>string</td><td>${copy("Направление: asc или desc", "Direction: asc or desc")}</td></tr>
+          </tbody>
+        </table>
+        <pre class="api-code-block"><code>// ${copy("Для модераторов/admin:", "For moderators/admin:")}
+{
+  "items": [
+    {
+      "id": "uuid-...",
+      "type": "record",
+      "status": "pending",
+      "userId": "uuid-...",
+      "player": "PlayerName",
+      "levelId": "silent-clubstep",
+      "levelName": "Silent Clubstep",
+      "progress": "100%",
+      "videoUrl": "https://youtu.be/...",
+      "moderationNote": "",
+      "createdAt": "2026-03-09T12:00:00.000Z"
+    }
+  ],
+  "total": 42,
+  "page": 1,
+  "totalPages": 3,
+  "limit": 15
+}
+
+// ${copy("Для обычного игрока: массив своих заявок без пагинации", "For regular players: array of own submissions, no pagination")}</code></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">${badge("POST")} /api/submissions ${authBadge(copy("требует токен", "requires token"))}</div>
+        <p class="submission-intro">${copy("Подача заявки на рекорд или предложение уровня.", "Submit a record or level suggestion.")}</p>
+        <pre class="api-code-block"><code>// ${copy("Заявка на рекорд:", "Record submission:")}
+{
+  "type": "record",
+  "levelId": "silent-clubstep",
+  "progress": "100%",
+  "videoUrl": "https://youtu.be/..."
+}
+
+// ${copy("Предложение уровня:", "Level suggestion:")}
+{
+  "type": "level",
+  "levelName": "My Nerfed Level",
+  "originalName": "Original Level",
+  "videoUrl": "https://youtu.be/...",
+  "nerfedLevelId": "12345678",
+  "originalLevelId": "87654321",
+  "thumbnailData": "data:image/..."  // ${copy("необязательно", "optional")}
+}</code></pre>
+        <pre class="api-code-block"><code>// HTTP 201 — ${copy("объект созданной заявки", "created submission object")}</code></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">${badge("PATCH")} /api/submissions/:id ${authBadge("moderator / admin")}</div>
+        <p class="submission-intro">${copy("Принять, отклонить или забанить заявку.", "Approve, reject, or ban a submission.")}</p>
+        <pre class="api-code-block"><code>{
+  "action": "approve",        // approve | reject | ban
+  "moderationNote": "OK"      // ${copy("необязательно", "optional")}
+}</code></pre>
+        <pre class="api-code-block"><code>// HTTP 200 — ${copy("обновлённый объект заявки", "updated submission object")}</code></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">${badge("DELETE")} /api/submissions/:id ${authBadge("moderator / admin")}</div>
+        <p class="submission-intro">${copy("Удаление заявки.", "Delete a submission.")}</p>
+        <pre class="api-code-block"><code>// HTTP 200
+{ "ok": true }</code></pre>
+      </section>
+
+      <!-- Upload -->
+      ${sec(copy("Загрузка изображений", "Image Upload"))}
+
+      <section class="panel">
+        <div class="panel-title">${badge("POST")} /api/upload ${authBadge(copy("требует токен", "requires token"))}</div>
+        <p class="submission-intro">${copy(
+          "Загрузка изображения на сервер. Поддерживаются PNG, JPEG, WebP, GIF. Максимальный размер — 10 МБ.",
+          "Upload an image to the server. Supported: PNG, JPEG, WebP, GIF. Max size: 10 MB."
+        )}</p>
+        <pre class="api-code-block"><code>{
+  "image": "data:image/png;base64,..."   // base64 data URL
+}</code></pre>
+        <pre class="api-code-block"><code>// HTTP 201
+{ "url": "/uploads/uuid.png" }</code></pre>
+      </section>
+
+      <!-- Guidelines -->
+      <section class="panel">
         <div class="panel-title">${icon("info")} ${copy("Ограничения и рекомендации", "Rate Limits & Guidelines")}</div>
         <ul class="api-guidelines">
-          <li>${copy("API является публичным и не требует аутентификации.", "The API is public and requires no authentication.")}</li>
-          <li>${copy("Пожалуйста, не отправляйте более 60 запросов в минуту.", "Please do not send more than 60 requests per minute.")}</li>
-          <li>${copy("Данные обновляются в реальном времени при добавлении уровней и рекордов.", "Data is updated in real time as levels and records are added.")}</li>
-          <li>${copy("При использовании данных в своих проектах, пожалуйста, укажите ссылку на Nerfed DemonList.", "When using data in your projects, please credit Nerfed DemonList with a link.")}</li>
+          <li>${copy("Лимит авторизации: 20 запросов в минуту с одного IP.", "Auth rate limit: 20 requests per minute per IP.")}</li>
+          <li>${copy("Публичные эндпоинты кешируются на 30–3600 секунд на сервере.", "Public endpoints are cached on the server for 30–3600 seconds.")}</li>
+          <li>${copy("Максимальный размер тела запроса — 10 МБ.", "Maximum request body size is 10 MB.")}</li>
+          <li>${copy("При использовании данных в своих проектах укажите ссылку на Nerfed DemonList.", "When using data in your projects, please credit Nerfed DemonList.")}</li>
         </ul>
       </section>
+
     </div>
   `;
 }
@@ -2189,6 +2703,24 @@ async function init() {
   mountShell(page);
   bindShellEvents(init);
   updateShellUser(currentUser);
+
+  document.addEventListener("click", (e) => {
+    const anchor = e.target.closest("a[href]");
+    if (!anchor) return;
+    if (anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    const href = anchor.getAttribute("href");
+    if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
+    if (isInternalLink(href)) {
+      e.preventDefault();
+      navigateTo(href);
+    }
+  });
+
+  window.addEventListener("popstate", () => {
+    navigateTo(location.pathname + location.search, false);
+  });
+
   await renderPage();
 }
 

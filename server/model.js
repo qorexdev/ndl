@@ -237,6 +237,11 @@ function buildActivityFeed(store) {
           levelId: level.id,
           text: entry.note,
           rank: entry.rank,
+          changeType: entry.changeType || null,
+          aboveId: entry.aboveId || null,
+          aboveName: entry.aboveName || null,
+          belowId: entry.belowId || null,
+          belowName: entry.belowName || null,
         });
       }
     }
@@ -258,6 +263,11 @@ function buildActivityFeed(store) {
         levelName: activity.levelName,
         levelId: activity.levelId,
         text: activity.text,
+        changeType: activity.changeType || null,
+        aboveId: activity.aboveId || null,
+        aboveName: activity.aboveName || null,
+        belowId: activity.belowId || null,
+        belowName: activity.belowName || null,
       });
     }
   }
@@ -294,12 +304,17 @@ function normalizeLevelRanks(store) {
     });
 }
 
-function appendLevelHistory(level, rank, text) {
+function appendLevelHistory(level, rank, text, neighbors = null) {
   level.history = Array.isArray(level.history) ? level.history : [];
   level.history.unshift({
     date: new Date().toISOString(),
     rank,
     note: text,
+    changeType: neighbors ? neighbors.changeType : null,
+    aboveId: neighbors ? neighbors.aboveId : null,
+    aboveName: neighbors ? neighbors.aboveName : null,
+    belowId: neighbors ? neighbors.belowId : null,
+    belowName: neighbors ? neighbors.belowName : null,
   });
   level.history = level.history.slice(0, 20);
 }

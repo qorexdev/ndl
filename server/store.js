@@ -123,6 +123,11 @@ async function loadFromDatabase() {
         date: ts(h.date),
         rank: h.rank,
         note: { ru: h.note_ru || "", en: h.note_en || "" },
+        changeType: h.change_type || null,
+        aboveId: h.above_id || null,
+        aboveName: h.above_name || null,
+        belowId: h.below_id || null,
+        belowName: h.below_name || null,
       });
     }
 
@@ -260,7 +265,6 @@ async function writeStore(store) {
     await client.query("DELETE FROM submissions");
     await client.query("DELETE FROM level_history");
     await client.query("DELETE FROM records");
-    await client.query("DELETE FROM sessions");
     await client.query("DELETE FROM levels");
     await client.query("DELETE FROM users");
     await client.query("DELETE FROM site_settings");
@@ -272,13 +276,6 @@ async function writeStore(store) {
         [u.id, u.nickname, u.email, u.passwordHash, u.passwordSalt, u.role,
          u.countryCode, u.avatarUrl, u.bio?.ru || "", u.bio?.en || "",
          u.isBanned, u.createdAt, u.updatedAt],
-      );
-    }
-
-    for (const s of store.sessions) {
-      await client.query(
-        `INSERT INTO sessions (id, token, user_id, expires_at) VALUES ($1,$2,$3,$4)`,
-        [s.id, s.token, s.userId, s.expiresAt],
       );
     }
 
@@ -314,8 +311,8 @@ async function writeStore(store) {
         const noteRu = typeof h.note === "object" ? h.note.ru || "" : String(h.note || "");
         const noteEn = typeof h.note === "object" ? h.note.en || "" : String(h.note || "");
         await client.query(
-          `INSERT INTO level_history (level_id, rank, note_ru, note_en, date) VALUES ($1,$2,$3,$4,$5)`,
-          [l.id, h.rank, noteRu, noteEn, h.date],
+          `INSERT INTO level_history (level_id, rank, note_ru, note_en, date, change_type, above_id, above_name, below_id, below_name) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [l.id, h.rank, noteRu, noteEn, h.date, h.changeType || null, h.aboveId || null, h.aboveName || null, h.belowId || null, h.belowName || null],
         );
       }
     }
@@ -367,6 +364,13 @@ async function writeStore(store) {
        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
       [store.siteSummary?.spotlightLevelId || ""],
     );
+
+    for (const s of store.sessions || []) {
+      await client.query(
+        `INSERT INTO sessions (id, token, user_id, expires_at) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+        [s.id, s.token, s.userId, s.expiresAt],
+      );
+    }
 
     await client.query("COMMIT");
   } catch (err) {

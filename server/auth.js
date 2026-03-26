@@ -5,8 +5,9 @@ const {
   scryptSync,
   timingSafeEqual,
 } = require("crypto");
+const { pool } = require("./db");
 
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
 function hashPassword(password, salt = randomBytes(16).toString("hex")) {
@@ -90,21 +91,33 @@ function generateRecoveryCodes(count = 8) {
   return Array.from({ length: count }, () => randomBytes(4).toString("hex").toUpperCase());
 }
 
-function createSession(store, userId) {
+async function createSession(store, userId) {
   cleanExpiredSessions(store);
   const token = generateSessionToken();
-  store.sessions.push({
+  const session = {
     id: randomUUID(),
     token,
     userId,
     expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
-  });
+  };
+  store.sessions.push(session);
+  try {
+    await pool.query(
+      `INSERT INTO sessions (id, token, user_id, expires_at) VALUES ($1, $2, $3, $4)`,
+      [session.id, session.token, session.userId, session.expiresAt],
+    );
+    pool.query(`DELETE FROM sessions WHERE expires_at <= NOW()`).catch(() => {});
+  } catch (err) {
+    console.error("createSession DB error:", err.message);
+  }
   return token;
 }
 
 function cleanExpiredSessions(store) {
   const now = Date.now();
-  store.sessions = (store.sessions || []).filter((session) => Date.parse(session.expiresAt) > now);
+  store.sessions = (store.sessions || []).filter(
+    (session) => session.expiresAt && Date.parse(session.expiresAt) > now,
+  );
 }
 
 function getTokenFromRequest(req) {
@@ -132,8 +145,13 @@ function getUserFromRequest(store, req) {
   return store.users.find((user) => user.id === session.userId) || null;
 }
 
-function revokeSession(store, token) {
+async function revokeSession(store, token) {
   store.sessions = (store.sessions || []).filter((session) => session.token !== token);
+  try {
+    await pool.query(`DELETE FROM sessions WHERE token = $1`, [token]);
+  } catch (err) {
+    console.error("revokeSession DB error:", err.message);
+  }
 }
 
 module.exports = {

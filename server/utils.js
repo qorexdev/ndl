@@ -31,7 +31,15 @@ function sendJson(res, statusCode, payload) {
     "Cache-Control": "no-store",
     "Content-Type": "application/json; charset=utf-8",
   });
-  res.end(JSON.stringify(payload, null, 2));
+  res.end(JSON.stringify(payload));
+}
+
+function sendJsonPublic(res, payload, maxAge = 30) {
+  res.writeHead(200, {
+    "Cache-Control": `public, max-age=${maxAge}, stale-while-revalidate=120`,
+    "Content-Type": "application/json; charset=utf-8",
+  });
+  res.end(JSON.stringify(payload));
 }
 
 function sendText(res, statusCode, text) {
@@ -181,6 +189,12 @@ function serveStatic(req, res) {
   };
   if (filePath.startsWith(UPLOADS_DIR)) {
     headers["Cache-Control"] = "public, max-age=31536000, immutable";
+  } else if (req.url.includes("?v=") && (ext === ".css" || ext === ".js")) {
+    headers["Cache-Control"] = "public, max-age=31536000, immutable";
+  } else if (ext === ".css" || ext === ".js") {
+    headers["Cache-Control"] = "public, max-age=3600";
+  } else if (ext === ".svg" || ext === ".png" || ext === ".ico" || ext === ".webp") {
+    headers["Cache-Control"] = "public, max-age=86400";
   }
 
   res.writeHead(200, headers);
@@ -198,6 +212,7 @@ module.exports = {
   getRequestBody,
   isGoogleDriveLink,
   methodNotAllowed,
+  sendJsonPublic,
   notFound,
   parseYouTubeId,
   saveUploadedImage,

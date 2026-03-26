@@ -82,6 +82,11 @@ CREATE TABLE IF NOT EXISTS level_history (
   date TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_history_level ON level_history(level_id);
+ALTER TABLE level_history ADD COLUMN IF NOT EXISTS change_type VARCHAR(20);
+ALTER TABLE level_history ADD COLUMN IF NOT EXISTS above_id VARCHAR(255);
+ALTER TABLE level_history ADD COLUMN IF NOT EXISTS above_name VARCHAR(255);
+ALTER TABLE level_history ADD COLUMN IF NOT EXISTS below_id VARCHAR(255);
+ALTER TABLE level_history ADD COLUMN IF NOT EXISTS below_name VARCHAR(255);
 
 CREATE TABLE IF NOT EXISTS submissions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
