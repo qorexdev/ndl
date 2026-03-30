@@ -493,6 +493,7 @@ function applySubmissionDecision(store, submission, action, moderator, moderatio
     approve: "approved",
     reject: "rejected",
     ban: "banned",
+    revise: "revision",
   }[action];
 
   if (!nextStatus) {

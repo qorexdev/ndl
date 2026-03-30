@@ -2,6 +2,8 @@ const https = require("https");
 
 const BOT_TOKEN = process.env.TG_BOT_TOKEN;
 const CHANNEL_ID = process.env.TG_CHANNEL_ID;
+const ADMIN_CHANNEL_ID = process.env.TG_ADMIN_CHANNEL_ID;
+const WEBHOOK_SECRET = process.env.TG_WEBHOOK_SECRET;
 const SITE_URL = "https://ndlist.space";
 
 function tgRequest(method, params) {
@@ -143,4 +145,126 @@ async function notifyLevelRemoved(level) {
   }
 }
 
-module.exports = { notifyLevelAdded, notifyLevelMoved, notifyLevelRemoved };
+async function notifySubmission(submission) {
+  if (!BOT_TOKEN || !ADMIN_CHANNEL_ID) return;
+  const id = submission.id;
+  const isLevel = submission.type === "level";
+
+  let text, keyboard;
+
+  if (isLevel) {
+    text = [
+      `📋 <b>Новая заявка на уровень</b>`,
+      ``,
+      `<b>${submission.levelName || "—"}</b>`,
+      submission.originalName ? `Оригинал: <i>${submission.originalName}</i>` : null,
+      submission.creatorNickname ? `Создатель: <b>${submission.creatorNickname}</b>` : null,
+      submission.verifierNickname ? `Верификатор: <b>${submission.verifierNickname}</b>` : null,
+      submission.originalPlacement ? `Позиция оригинала: <b>${submission.originalPlacement}</b>` : null,
+      submission.segment ? `Список: <b>${segmentLabel(submission.segment)}</b>` : null,
+      submission.length ? `Длина: <b>${submission.length}</b>` : null,
+      submission.objects ? `Объектов: <b>${submission.objects}</b>` : null,
+      submission.similarity != null ? `Схожесть с нерфом: <b>${submission.similarity}%</b>` : null,
+      ``,
+      `Заявку подал: <b>${submission.player}</b>`,
+      submission.notes ? `Заметки: ${submission.notes}` : null,
+      ``,
+      submission.videoUrl ? `🎥 <a href="${submission.videoUrl}">Видео</a>` : null,
+      submission.rawUrl ? `📁 <a href="${submission.rawUrl}">Raw footage</a>` : null,
+      submission.verificationUrl ? `✅ <a href="${submission.verificationUrl}">Верификация</a>` : null,
+    ].filter((x) => x !== null).join("\n");
+
+    keyboard = {
+      inline_keyboard: [[
+        { text: "Принять ✅", callback_data: `sub_approve:${id}` },
+        { text: "Отклонить ❌", callback_data: `sub_reject:${id}` },
+        { text: "На доработку 🔄", callback_data: `sub_revise:${id}` },
+      ]],
+    };
+  } else {
+    text = [
+      `🎮 <b>Новая заявка на рекорд</b>`,
+      ``,
+      `Игрок: <b>${submission.player}</b>`,
+      `Уровень: <b>${submission.levelName || "—"}</b>`,
+      `Прогресс: <b>${submission.progress}</b>`,
+      submission.notes ? `Заметки: ${submission.notes}` : null,
+      ``,
+      submission.videoUrl ? `🎥 <a href="${submission.videoUrl}">Видео</a>` : null,
+      submission.rawUrl ? `📁 <a href="${submission.rawUrl}">Raw footage</a>` : null,
+    ].filter((x) => x !== null).join("\n");
+
+    keyboard = {
+      inline_keyboard: [[
+        { text: "Одобрить ✅", callback_data: `sub_approve:${id}` },
+        { text: "Отклонить ❌", callback_data: `sub_reject:${id}` },
+        { text: "Забанить 🚫", callback_data: `sub_ban:${id}` },
+      ]],
+    };
+  }
+
+  const photo = isLevel && submission.previewImageUrl
+    ? (submission.previewImageUrl.startsWith("http") ? submission.previewImageUrl : `${SITE_URL}${submission.previewImageUrl}`)
+    : null;
+
+  try {
+    if (photo) {
+      await tgRequest("sendPhoto", {
+        chat_id: ADMIN_CHANNEL_ID,
+        photo,
+        caption: text,
+        parse_mode: "HTML",
+        reply_markup: keyboard,
+      });
+    } else {
+      await tgRequest("sendMessage", {
+        chat_id: ADMIN_CHANNEL_ID,
+        text,
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+        reply_markup: keyboard,
+      });
+    }
+  } catch (err) {
+    console.error("[TG] notifySubmission:", err.message);
+  }
+}
+
+async function setupWebhook() {
+  if (!BOT_TOKEN) return;
+  const params = { url: `${SITE_URL}/api/tg-webhook` };
+  if (WEBHOOK_SECRET) params.secret_token = WEBHOOK_SECRET;
+  try {
+    await tgRequest("setWebhook", params);
+    console.log("[TG] Webhook registered:", params.url);
+  } catch (err) {
+    console.error("[TG] setWebhook failed:", err.message);
+  }
+}
+
+async function answerCallbackQuery(callbackQueryId, text) {
+  try {
+    await tgRequest("answerCallbackQuery", { callback_query_id: callbackQueryId, text, show_alert: false });
+  } catch (_) {}
+}
+
+async function editTgMessage(chatId, messageId, newText, hasPhoto) {
+  try {
+    if (hasPhoto) {
+      await tgRequest("editMessageCaption", { chat_id: chatId, message_id: messageId, caption: newText, parse_mode: "HTML" });
+    } else {
+      await tgRequest("editMessageText", { chat_id: chatId, message_id: messageId, text: newText, parse_mode: "HTML", disable_web_page_preview: true });
+    }
+  } catch (_) {}
+}
+
+module.exports = {
+  notifyLevelAdded,
+  notifyLevelMoved,
+  notifyLevelRemoved,
+  notifySubmission,
+  setupWebhook,
+  answerCallbackQuery,
+  editTgMessage,
+  WEBHOOK_SECRET: () => WEBHOOK_SECRET,
+};

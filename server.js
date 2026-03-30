@@ -35,7 +35,16 @@ const {
   unauthorized,
 } = require("./server/utils");
 
-const { notifyLevelAdded, notifyLevelMoved, notifyLevelRemoved } = require("./server/telegram");
+const {
+  notifyLevelAdded,
+  notifyLevelMoved,
+  notifyLevelRemoved,
+  notifySubmission,
+  setupWebhook,
+  answerCallbackQuery,
+  editTgMessage,
+  WEBHOOK_SECRET,
+} = require("./server/telegram");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT || 3000);
@@ -608,6 +617,7 @@ async function handleApi(req, res) {
       store.submissions.unshift(submission);
       await writeStore(store);
       sendJson(res, 201, submission);
+      notifySubmission(submission).catch(() => {});
     } catch (error) {
       badRequest(res, error.message);
     }
@@ -643,6 +653,54 @@ async function handleApi(req, res) {
     store.submissions.splice(idx, 1);
     await writeStore(store);
     sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/tg-webhook") {
+    const secret = req.headers["x-telegram-bot-api-secret-token"];
+    const expectedSecret = WEBHOOK_SECRET();
+    if (expectedSecret && secret !== expectedSecret) {
+      res.writeHead(403).end();
+      return;
+    }
+    try {
+      const body = await getRequestBody(req);
+      const cq = body.callback_query;
+      if (cq) {
+        const [action, submissionId] = (cq.data || "").split(":");
+        const actionMap = { sub_approve: "approve", sub_reject: "reject", sub_ban: "ban", sub_revise: "revise" };
+        const modelAction = actionMap[action];
+        const submission = store.submissions.find((s) => s.id === submissionId);
+
+        if (!submission || !modelAction) {
+          await answerCallbackQuery(cq.id, "Заявка не найдена");
+        } else if (submission.status !== "pending") {
+          await answerCallbackQuery(cq.id, `Уже обработана: ${submission.status}`);
+        } else {
+          const tgUser = cq.from;
+          const moderator = {
+            id: `tg:${tgUser.id}`,
+            nickname: tgUser.username ? `@${tgUser.username}` : (tgUser.first_name || "TelegramAdmin"),
+            role: "admin",
+          };
+          const labelMap = { approve: "Одобрено ✅", reject: "Отклонено ❌", ban: "Забанено 🚫", revise: "На доработку 🔄" };
+          applySubmissionDecision(store, submission, modelAction, moderator, `via Telegram by ${moderator.nickname}`);
+          await writeStore(store);
+          await answerCallbackQuery(cq.id, labelMap[modelAction]);
+          const chatId = cq.message?.chat?.id;
+          const msgId = cq.message?.message_id;
+          if (chatId && msgId) {
+            const suffix = `\n\n<i>${labelMap[modelAction]} — ${moderator.nickname}</i>`;
+            const hasPhoto = Array.isArray(cq.message?.photo);
+            const original = hasPhoto ? (cq.message.caption || "") : (cq.message.text || "");
+            await editTgMessage(chatId, msgId, original + suffix, hasPhoto);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[TG webhook]", err.message);
+    }
+    res.writeHead(200, { "Content-Type": "application/json" }).end("{}");
     return;
   }
 
@@ -940,6 +998,7 @@ async function startServer() {
 
   server.listen(PORT, HOST, () => {
     console.log(`NDL server is running at http://${HOST}:${PORT}`);
+    setupWebhook().catch(() => {});
   });
 }
 
