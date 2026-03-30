@@ -16,6 +16,7 @@ const {
   buildCountryLeaderboard,
   buildPlayerLeaderboard,
   computeSummary,
+  createNotification,
   normalizeLevelRanks,
   recordScore,
   sanitizeLevelInput,
@@ -25,13 +26,16 @@ const {
 const {
   badRequest,
   forbidden,
+  getClientIp,
   getRequestBody,
+  limiters,
   methodNotAllowed,
   notFound,
   saveUploadedImage,
   sendJson,
   sendJsonPublic,
   serveStatic,
+  tooManyRequests,
   unauthorized,
 } = require("./server/utils");
 
@@ -52,7 +56,7 @@ const PORT = Number(process.env.PORT || 3000);
 
 const CLEAN_PAGES = new Set([
   "list", "leaderboard", "submit", "rules", "moderation",
-  "account", "level", "user", "api", "accounts", "submissions",
+  "account", "level", "user", "api", "accounts", "submissions", "notifications",
 ]);
 
 const authAttempts = new Map();
@@ -68,11 +72,6 @@ function checkRateLimit(ip) {
   return record.count <= 20;
 }
 
-function getClientIp(req) {
-  const forwarded = req.headers["x-forwarded-for"];
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return req.headers["x-real-ip"] || req.socket.remoteAddress;
-}
 
 function findUserByIdentifier(store, identifier) {
   const value = String(identifier || "").trim().toLowerCase();
@@ -311,9 +310,19 @@ async function handleAccountRoutes(store, req, res, pathname) {
 }
 
 async function handleApi(req, res) {
+  const ip = getClientIp(req);
   const store = readStore();
   const url = new URL(req.url, `http://${HOST}:${PORT}`);
   const pathname = url.pathname;
+
+  // Rate limiting
+  if (pathname.startsWith("/api/auth/") || pathname === "/api/auth") {
+    if (!limiters.auth.check(ip)) { tooManyRequests(res); return; }
+  } else if (req.method === "POST" && pathname === "/api/submissions") {
+    if (!limiters.submit.check(ip)) { tooManyRequests(res); return; }
+  } else if (pathname.startsWith("/api/")) {
+    if (!limiters.api.check(ip)) { tooManyRequests(res); return; }
+  }
 
   if (await handleAuthRoutes(store, req, res, pathname)) return;
   if (await handleAccountRoutes(store, req, res, pathname)) return;
@@ -511,6 +520,10 @@ async function handleApi(req, res) {
     const removedLevel = store.levels[index];
     store.levels.splice(index, 1);
     normalizeLevelRanks(store);
+    // nullify levelId on submissions referencing deleted level to avoid FK violation
+    for (const s of store.submissions) {
+      if (s.levelId === levelId) s.levelId = null;
+    }
     await writeStore(store);
     sendJson(res, 200, { ok: true });
     notifyLevelRemoved(removedLevel).catch(() => {});
@@ -616,12 +629,33 @@ async function handleApi(req, res) {
       }
       const submission = sanitizeSubmissionInput(body, user, store);
       store.submissions.unshift(submission);
+      // notify mods about new submission
+      if (!store.notifications) store.notifications = [];
+      const modUsers = store.users.filter((u) => ["moderator", "admin"].includes(u.role) && !u.isBanned);
+      const subTypeRu = submission.type === "record" ? "рекорд" : "уровень";
+      const subTypeEn = submission.type === "record" ? "record" : "level";
+      for (const mod of modUsers) {
+        createNotification(store, mod.id, "new_submission",
+          `Новая заявка (${subTypeRu}): ${submission.levelName} от ${submission.player}`,
+          `New submission (${subTypeEn}): ${submission.levelName} by ${submission.player}`,
+          "/submissions");
+      }
       await writeStore(store);
       sendJson(res, 201, submission);
       notifySubmission(submission).catch(() => {});
     } catch (error) {
       badRequest(res, error.message);
     }
+    return;
+  }
+
+  if (req.method === "GET" && pathname.startsWith("/api/submissions/")) {
+    const user = requireRole(store, req, res, ["moderator", "admin"]);
+    if (!user) return;
+    const submissionId = decodeURIComponent(pathname.replace("/api/submissions/", ""));
+    const submission = store.submissions.find((entry) => entry.id === submissionId);
+    if (!submission) { notFound(res, "Submission not found"); return; }
+    sendJson(res, 200, submission);
     return;
   }
 
@@ -669,39 +703,50 @@ async function handleApi(req, res) {
       const cq = body.callback_query;
       if (cq) {
         const [action, submissionId] = (cq.data || "").split(":");
-        const actionMap = { sub_approve: "approve", sub_reject: "reject", sub_ban: "ban" };
-        const modelAction = actionMap[action];
-        const submission = store.submissions.find((s) => s.id === submissionId);
 
-        if (!submission || !modelAction) {
-          await answerCallbackQuery(cq.id, "Заявка не найдена");
-        } else if (submission.status !== "pending") {
-          await answerCallbackQuery(cq.id, `Уже обработана: ${submission.status}`);
+        // noop — status-display buttons, just acknowledge
+        if (action === "noop") {
+          await answerCallbackQuery(cq.id, "");
         } else {
-          const tgUser = cq.from;
-          const moderator = {
-            id: `tg:${tgUser.id}`,
-            nickname: tgUser.username ? `@${tgUser.username}` : (tgUser.first_name || "TelegramAdmin"),
-            role: "admin",
-          };
-          const labelMap = { approve: "Принято ✅", reject: "Отклонено ❌", ban: "Забанено 🚫" };
-          applySubmissionDecision(store, submission, modelAction, moderator, `via Telegram by ${moderator.nickname}`);
-          await writeStore(store);
-          await answerCallbackQuery(cq.id, labelMap[modelAction]);
-          const chatId = cq.message?.chat?.id;
-          const msgId = cq.message?.message_id;
-          if (chatId && msgId) {
-            if (modelAction === "approve" && submission.type === "level") {
-              // Replace buttons with "Create level" link button
-              await updateKeyboard(chatId, msgId, {
-                inline_keyboard: [[
-                  { text: "Принято ✅", callback_data: `noop:done` },
-                  { text: "Создать уровень из заявки 🔗", url: `${TG_SITE_URL}/moderation?from_submission=${encodeURIComponent(submission.id)}` },
-                ]],
-              });
-            } else {
-              // Just remove buttons, preserve message text with links
-              await updateKeyboard(chatId, msgId, { inline_keyboard: [] });
+          const actionMap = { sub_approve: "approve", sub_reject: "reject", sub_ban: "ban" };
+          const modelAction = actionMap[action];
+          const submission = store.submissions.find((s) => s.id === submissionId);
+
+          if (!submission || !modelAction) {
+            await answerCallbackQuery(cq.id, "Заявка не найдена");
+          } else if (submission.status !== "pending") {
+            await answerCallbackQuery(cq.id, `Уже обработана: ${submission.status}`);
+          } else {
+            const tgUser = cq.from;
+            const who = tgUser.username ? `@${tgUser.username}` : (tgUser.first_name || "Admin");
+            const moderator = {
+              id: `tg:${tgUser.id}`,
+              nickname: who,
+              role: "admin",
+            };
+            const labelMap = {
+              approve: `✅ Одобрено · ${who}`,
+              reject:  `❌ Отклонено · ${who}`,
+              ban:     `🚫 Игрок забанен · ${who}`,
+            };
+            const toastMap = { approve: "Одобрено ✅", reject: "Отклонено ❌", ban: "Забанено 🚫" };
+            applySubmissionDecision(store, submission, modelAction, moderator, `via Telegram by ${who}`);
+            await writeStore(store);
+            await answerCallbackQuery(cq.id, toastMap[modelAction]);
+            const chatId = cq.message?.chat?.id;
+            const msgId = cq.message?.message_id;
+            if (chatId && msgId) {
+              const statusRow = [{ text: labelMap[modelAction], callback_data: "noop" }];
+              if (modelAction === "approve" && submission.type === "level") {
+                await updateKeyboard(chatId, msgId, {
+                  inline_keyboard: [
+                    statusRow,
+                    [{ text: "Создать уровень из заявки 🔗", url: `${TG_SITE_URL}/moderation?from_submission=${encodeURIComponent(submission.id)}` }],
+                  ],
+                });
+              } else {
+                await updateKeyboard(chatId, msgId, { inline_keyboard: [statusRow] });
+              }
             }
           }
         }
@@ -915,6 +960,29 @@ async function handleApi(req, res) {
     store.submissions = store.submissions.filter((s) => s.userId !== userId);
 
     store.users.splice(index, 1);
+    await writeStore(store);
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/notifications") {
+    const user = requireAuth(store, req, res);
+    if (!user) return;
+    const notifs = (store.notifications || []).filter((n) => n.userId === user.id).slice(0, 60);
+    sendJson(res, 200, notifs);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/notifications/read") {
+    const user = requireAuth(store, req, res);
+    if (!user) return;
+    const body = await getRequestBody(req);
+    const ids = Array.isArray(body.ids) ? body.ids : null;
+    (store.notifications || []).forEach((n) => {
+      if (n.userId === user.id && (!ids || ids.includes(n.id))) {
+        n.read = true;
+      }
+    });
     await writeStore(store);
     sendJson(res, 200, { ok: true });
     return;

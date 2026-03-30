@@ -317,7 +317,10 @@ async function writeStore(store) {
       }
     }
 
+    const levelIds = new Set(store.levels.map((l) => l.id));
     for (const s of store.submissions) {
+      // guard: nullify levelId if the level was deleted (prevents FK violation)
+      if (s.levelId && !levelIds.has(s.levelId)) s.levelId = null;
       await client.query(
         `INSERT INTO submissions (id, type, status, user_id, player, country_code, level_id,
          level_name, original_name, progress, raw_url, video_url, notes,

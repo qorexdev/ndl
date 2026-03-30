@@ -35,7 +35,7 @@ let page = (() => {
   const bp = document.body.dataset.page;
   if (bp) return bp;
   const p = location.pathname.replace(/^\//, "") || "home";
-  const map = { "": "home", list: "list", level: "level", leaderboard: "leaderboard", submit: "submit", rules: "rules", moderation: "moderation", account: "account", user: "user", api: "api", accounts: "accounts", submissions: "submissions" };
+  const map = { "": "home", list: "list", level: "level", leaderboard: "leaderboard", submit: "submit", rules: "rules", moderation: "moderation", account: "account", user: "user", api: "api", accounts: "accounts", submissions: "submissions", notifications: "notifications" };
   return map[p] || "home";
 })();
 
@@ -52,6 +52,7 @@ const ROUTE_MAP = {
   "/api": "api",
   "/accounts": "accounts",
   "/submissions": "submissions",
+  "/notifications": "notifications",
 };
 
 function pathToPage(pathname) {
@@ -302,6 +303,36 @@ function statBox(label, value, extra = "", { rawValue = false } = {}) {
   `;
 }
 
+function showConfirm(message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+      <div class="confirm-box">
+        <p class="confirm-msg">${escapeHtml(message)}</p>
+        <div class="confirm-actions">
+          <button class="btn btn-secondary confirm-cancel">${copy("Отмена", "Cancel")}</button>
+          <button class="btn btn-danger confirm-ok">${copy("Удалить", "Delete")}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add("show"));
+    const close = (result) => {
+      overlay.classList.remove("show");
+      setTimeout(() => overlay.remove(), 200);
+      resolve(result);
+    };
+    overlay.querySelector(".confirm-ok").addEventListener("click", () => close(true));
+    overlay.querySelector(".confirm-cancel").addEventListener("click", () => close(false));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(false); });
+    document.addEventListener("keydown", function onKey(e) {
+      if (e.key === "Escape") { close(false); document.removeEventListener("keydown", onKey); }
+      if (e.key === "Enter") { close(true); document.removeEventListener("keydown", onKey); }
+    }, { once: false });
+  });
+}
+
 function toastNotification(text, tone = "success") {
   const existing = document.querySelector(".toast-notification");
   if (existing) existing.remove();
@@ -318,6 +349,118 @@ function toastNotification(text, tone = "success") {
   }, 3000);
 }
 
+function notifTypeIcon(type) {
+  return { record_approved: "✅", record_rejected: "❌", level_approved: "🎉", level_rejected: "❌", new_submission: "📋", banned: "🚫" }[type] || "🔔";
+}
+
+function timeAgo(isoString) {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return copy("только что", "just now");
+  if (mins < 60) return copy(`${mins} мин назад`, `${mins}m ago`);
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return copy(`${hours} ч назад`, `${hours}h ago`);
+  const days = Math.floor(hours / 24);
+  return copy(`${days} д назад`, `${days}d ago`);
+}
+
+let _notifUnread = 0;
+let _notifFirstPoll = true;
+
+function updateNotifBadge(count) {
+  _notifUnread = count;
+  const badge = document.getElementById("notif-badge");
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count > 99 ? "99+" : String(count);
+    badge.style.display = "";
+  } else {
+    badge.style.display = "none";
+  }
+}
+
+function playNotifSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const playTone = (freq, startTime, dur, vol) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(vol, startTime + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
+      osc.start(startTime);
+      osc.stop(startTime + dur);
+    };
+    playTone(880, ctx.currentTime, 0.55, 0.18);
+    playTone(1320, ctx.currentTime + 0.13, 0.45, 0.14);
+  } catch (_) {}
+}
+
+function showNotifPopup(notif) {
+  document.querySelectorAll(".notif-popup").forEach((el) => el.remove());
+  const title = getLang() === "ru" ? notif.titleRu : notif.titleEn;
+  const popup = document.createElement("div");
+  popup.className = "notif-popup";
+  popup.innerHTML = `
+    <span class="notif-popup-icon">${notifTypeIcon(notif.type)}</span>
+    <div class="notif-popup-body">
+      <div class="notif-popup-label">${copy("Новое уведомление", "New notification")}</div>
+      <div class="notif-popup-title">${escapeHtml(title)}</div>
+    </div>
+    <button class="notif-popup-close" aria-label="Close">✕</button>
+  `;
+  document.body.appendChild(popup);
+  requestAnimationFrame(() => popup.classList.add("show"));
+  const close = () => {
+    popup.classList.remove("show");
+    setTimeout(() => popup.remove(), 380);
+  };
+  popup.querySelector(".notif-popup-close").addEventListener("click", (e) => { e.stopPropagation(); close(); });
+  popup.addEventListener("click", () => { navigateTo("/notifications"); close(); });
+  setTimeout(close, 7000);
+}
+
+function showBrowserNotif(title, body) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    const n = new Notification("NDL · " + title, {
+      body,
+      icon: "/assets/favicon.svg",
+      badge: "/assets/favicon.svg",
+      tag: "ndl-notif",
+    });
+    n.onclick = () => { window.focus(); navigateTo("/notifications"); n.close(); };
+  } catch (_) {}
+}
+
+async function requestNotifPermission() {
+  if (!("Notification" in window) || Notification.permission !== "default") return;
+  await Notification.requestPermission();
+}
+
+async function pollNotifications() {
+  if (!currentUser) return;
+  try {
+    const notifs = await api("/api/notifications");
+    const unread = notifs.filter((n) => !n.read).length;
+    if (!_notifFirstPoll && unread > _notifUnread) {
+      playNotifSound();
+      const newest = notifs.find((n) => !n.read);
+      if (newest) {
+        showNotifPopup(newest);
+        const title = getLang() === "ru" ? newest.titleRu : newest.titleEn;
+        showBrowserNotif(title, "");
+      }
+    }
+    _notifFirstPoll = false;
+    updateNotifBadge(unread);
+  } catch (_) {}
+}
+
 function fileInputMarkup(name, label, accept = "image/*") {
   return `
     <label class="file-upload-area" data-file-input="${name}">
@@ -332,6 +475,45 @@ function fileInputMarkup(name, label, accept = "image/*") {
       </div>
     </label>
   `;
+}
+
+function lengthInputMarkup(value) {
+  const match = String(value || "").match(/^(\d+):(\d+)$/);
+  const min = match ? match[1] : "";
+  const sec = match ? match[2] : "";
+  return `
+    <div class="length-input-wrap">
+      <input type="hidden" name="length" value="${escapeHtml(value || "")}" />
+      <div class="length-pair">
+        <input class="length-min" type="number" min="0" max="99" placeholder="0" value="${escapeHtml(min)}" />
+        <span class="length-label">${copy("мин", "min")}</span>
+        <input class="length-sec" type="number" min="0" max="59" placeholder="00" value="${escapeHtml(sec)}" />
+        <span class="length-label">${copy("сек", "sec")}</span>
+      </div>
+    </div>
+  `;
+}
+
+function bindLengthInputs(container) {
+  container.querySelectorAll(".length-input-wrap").forEach((wrap) => {
+    const hidden = wrap.querySelector('[name="length"]');
+    const minInput = wrap.querySelector(".length-min");
+    const secInput = wrap.querySelector(".length-sec");
+    if (!hidden || !minInput || !secInput) return;
+    const update = () => {
+      const m = Math.max(0, Number(minInput.value) || 0);
+      const s = Math.min(59, Math.max(0, Number(secInput.value) || 0));
+      secInput.value = s || secInput.value === "" ? (secInput.value === "" ? "" : String(s).padStart(2, "0")) : "";
+      hidden.value = (m > 0 || s > 0) ? `${m}:${String(s).padStart(2, "0")}` : "Unknown";
+    };
+    minInput.addEventListener("input", update);
+    secInput.addEventListener("blur", () => {
+      const s = Math.min(59, Math.max(0, Number(secInput.value) || 0));
+      if (secInput.value !== "") secInput.value = String(s).padStart(2, "0");
+      update();
+    });
+    minInput.addEventListener("blur", update);
+  });
 }
 
 function bindFileInputs(container) {
@@ -515,7 +697,7 @@ async function renderList() {
                           <div class="level-info">
                             <div class="level-title-row">
                               <div class="level-title"><span class="level-rank">#${level.rank}</span> ${escapeHtml(level.name)}</div>
-                              ${level.originalPlacement ? `<span class="gdl-badge" title="Позиция в Global Demon List"><span class="gdl-badge-label">${icon("globe")} Global Demon List</span><span class="gdl-badge-rank">#${escapeHtml(level.originalPlacement)}</span></span>` : ""}
+                              ${level.originalPlacement ? `<span class="gdl-badge" title="Позиция в Global Demon List"><span class="gdl-badge-label">Global Demon List</span><span class="gdl-badge-rank">#${escapeHtml(level.originalPlacement)}</span></span>` : ""}
                             </div>
                             <div class="level-stats">
                               ${escapeHtml(t("createdBy"))} <span class="white">${escapeHtml(level.creator)}</span>
@@ -727,7 +909,7 @@ async function renderLevel() {
 
     content.querySelectorAll(".record-delete-btn").forEach((btn) => {
       btn.addEventListener("click", async () => {
-        if (!window.confirm(t("deleteRecordConfirm"))) return;
+        if (!await showConfirm(t("deleteRecordConfirm"))) return;
         const levelId = btn.dataset.deleteLevel;
         const recordId = btn.dataset.deleteRecord;
         try {
@@ -992,11 +1174,15 @@ async function renderSubmit() {
       }
 
       if (state.type === "record") {
+        const selLevel = levels.find((l) => l.id === selectedLevel);
+        const minProg = selLevel?.minProgress != null ? Number(selLevel.minProgress) : null;
+        const minHint = minProg != null ? copy(`мин: ${minProg}%`, `min: ${minProg}%`) : "";
+        const progressPlaceholder = minProg != null ? `${minProg}% – 100%` : "100%";
         return `
           <div class="form-grid">
             ${renderField(t("fieldLevelSelect"),
               `<select name="levelId" required>${levels.map((l) => `<option value="${l.id}" ${selectedLevel === l.id ? "selected" : ""}>#${l.rank} ${escapeHtml(l.name)}</option>`).join("")}</select>`)}
-            ${renderField(t("fieldProgress"), `<input name="progress" required placeholder="71% / 100%" value="${escapeHtml(values.progress || "")}" />`)}
+            ${renderField(t("fieldProgress"), `<div class="input-score-wrap"><input name="progress" required placeholder="${escapeHtml(progressPlaceholder)}" value="${escapeHtml(values.progress || "")}" /><span class="score-max-hint" id="sub-progress-hint">${escapeHtml(minHint)}</span></div>`)}
           </div>
         `;
       }
@@ -1030,7 +1216,7 @@ async function renderSubmit() {
           ${renderField(t("fieldMinProgressScore"), `<div class="input-score-wrap"><input name="minProgressScore" type="number" min="1" required placeholder="0" value="${escapeHtml(values.minProgressScore || "")}" /><span class="score-max-hint" id="sub-score-hint"></span></div>`)}
         </div>
         <div class="form-grid">
-          ${renderField(t("fieldLength"), `<input name="length" value="${escapeHtml(values.length || "")}" />`)}
+          ${renderField(t("fieldLength"), lengthInputMarkup(values.length))}
           ${renderField(t("fieldObjects"), `<input name="objects" value="${escapeHtml(values.objects || "")}" />`)}
           ${renderField(t("fieldVersion"), `<input name="version" value="${escapeHtml(values.version || "")}" />`)}
         </div>
@@ -1100,9 +1286,33 @@ async function renderSubmit() {
         });
       });
 
+      if (state.type === "record") {
+        const updateProgressHint = () => {
+          const levelId = content.querySelector('[name="levelId"]')?.value;
+          const level = levels.find((l) => l.id === levelId);
+          const hint = content.querySelector("#sub-progress-hint");
+          if (hint) {
+            const mp = level?.minProgress != null ? Number(level.minProgress) : null;
+            hint.textContent = mp != null ? copy(`мин: ${mp}%`, `min: ${mp}%`) : "";
+          }
+        };
+        content.querySelector('[name="levelId"]')?.addEventListener("change", () => {
+          const levelId = content.querySelector('[name="levelId"]')?.value;
+          const level = levels.find((l) => l.id === levelId);
+          const progressInput = content.querySelector('[name="progress"]');
+          if (progressInput) {
+            progressInput.value = "";
+            const mp = level?.minProgress != null ? Number(level.minProgress) : null;
+            progressInput.placeholder = mp != null ? `${mp}% – 100%` : "100%";
+          }
+          updateProgressHint();
+        });
+      }
+
       if (state.type === "level") {
         bindFileInputs(content);
         bindUserSearchFields(content);
+        bindLengthInputs(content);
 
         const calcScore100 = (rank) => Math.max(20, 1000 - (rank - 1) * 40);
         const updateSubHint = () => {
@@ -1110,7 +1320,25 @@ async function renderSubmit() {
           const hint = content.querySelector("#sub-score-hint");
           if (hint) hint.textContent = rank >= 1 ? `/ ${calcScore100(rank)} pts` : "";
         };
-        content.querySelector("#sub-proposed-rank")?.addEventListener("input", updateSubHint);
+        const setSubScoreMax = () => {
+          const rank = Number(content.querySelector("#sub-proposed-rank")?.value);
+          const scoreInput = content.querySelector('[name="minProgressScore"]');
+          if (!scoreInput) return;
+          if (rank >= 1) {
+            const max = calcScore100(rank) - 1;
+            scoreInput.max = max;
+            if (Number(scoreInput.value) > max) scoreInput.value = max;
+          } else {
+            scoreInput.removeAttribute("max");
+          }
+        };
+        content.querySelector("#sub-proposed-rank")?.addEventListener("input", (e) => {
+          const max = Number(e.target.max);
+          if (max && Number(e.target.value) > max) e.target.value = max;
+          updateSubHint();
+          setSubScoreMax();
+        });
+        content.querySelector('[name="minProgressScore"]')?.addEventListener("change", setSubScoreMax);
         updateSubHint();
       }
 
@@ -1118,6 +1346,21 @@ async function renderSubmit() {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
         state.values = Object.fromEntries(formData.entries());
+
+        if (state.type === "record") {
+          const levelId = formData.get("levelId");
+          const level = levels.find((l) => l.id === levelId);
+          if (level?.minProgress != null) {
+            const progRaw = String(formData.get("progress") || "").replace("%", "").trim();
+            const progNum = parseFloat(progRaw);
+            if (!isNaN(progNum) && progNum < Number(level.minProgress)) {
+              state.message = copy(`Минимальный прогресс для этого уровня: ${level.minProgress}%`, `Minimum progress for this level: ${level.minProgress}%`);
+              state.tone = "error";
+              render();
+              return;
+            }
+          }
+        }
 
         const payload = { type: state.type, ...state.values };
         if (state.type === "level") {
@@ -1260,9 +1503,8 @@ async function renderModeration() {
     const fromSubId = new URLSearchParams(window.location.search).get("from_submission");
     if (fromSubId) {
       try {
-        const allSubs = await api("/api/submissions");
-        const s = allSubs.find((x) => x.id === fromSubId);
-        if (s) {
+        const s = await api(`/api/submissions/${encodeURIComponent(fromSubId)}`);
+        if (s && s.id) {
           const prefill = {
             name: s.levelName || s.proposalName || "",
             originalName: s.originalName || s.originalLevelName || "",
@@ -1274,9 +1516,9 @@ async function renderModeration() {
             similarity: s.similarity ? String(s.similarity) : "80",
             minProgress: s.minProgress != null ? String(s.minProgress) : "",
             minProgressScore: s.minProgressScore != null ? String(s.minProgressScore) : "",
-            length: s.length || "Unknown",
-            objects: s.objects || "Unknown",
-            version: s.version || "2.2",
+            length: s.length || "",
+            objects: s.objects || "",
+            version: s.version || "",
             songUrl: s.songUrl || "",
             verificationUrl: s.verificationUrl || s.videoUrl || "",
             descriptionRu: s.descriptionRu || "",
@@ -1357,7 +1599,7 @@ async function renderModeration() {
                 ${renderField(t("fieldMinProgressScore"), `<div class="input-score-wrap"><input name="minProgressScore" type="number" min="1" placeholder="0" value="${escapeHtml(state.values.minProgressScore || "")}" /><span class="score-max-hint" id="mod-score-hint"></span></div>`)}
               </div>
               <div class="form-grid">
-                ${renderField(t("fieldLength"), `<input name="length" value="${escapeHtml(state.values.length || "")}" />`)}
+                ${renderField(t("fieldLength"), lengthInputMarkup(state.values.length))}
                 ${renderField(t("fieldObjects"), `<input name="objects" value="${escapeHtml(state.values.objects || "")}" />`)}
                 ${renderField(t("fieldVersion"), `<input name="version" value="${escapeHtml(state.values.version || "")}" />`)}
               </div>
@@ -1376,6 +1618,7 @@ async function renderModeration() {
 
       bindFileInputs(content);
       bindUserSearchFields(content);
+      bindLengthInputs(content);
 
       const calcScore100 = (rank) => Math.max(20, 1000 - (rank - 1) * 40);
       const updateModHint = () => {
@@ -1383,7 +1626,25 @@ async function renderModeration() {
         const hint = content.querySelector("#mod-score-hint");
         if (hint) hint.textContent = rank >= 1 ? `/ ${calcScore100(rank)} pts` : "";
       };
-      content.querySelector('[name="rank"]')?.addEventListener("input", updateModHint);
+      const setModScoreMax = () => {
+        const rank = Number(content.querySelector('[name="rank"]')?.value);
+        const scoreInput = content.querySelector('[name="minProgressScore"]');
+        if (!scoreInput) return;
+        if (rank >= 1) {
+          const max = calcScore100(rank) - 1;
+          scoreInput.max = max;
+          if (Number(scoreInput.value) > max) scoreInput.value = max;
+        } else {
+          scoreInput.removeAttribute("max");
+        }
+      };
+      content.querySelector('[name="rank"]')?.addEventListener("input", (e) => {
+        const max = Number(e.target.max);
+        if (max && Number(e.target.value) > max) e.target.value = max;
+        updateModHint();
+        setModScoreMax();
+      });
+      content.querySelector('[name="minProgressScore"]')?.addEventListener("change", setModScoreMax);
       updateModHint();
 
       content.querySelector("#editor-level-select")?.addEventListener("change", (e) => {
@@ -1432,7 +1693,7 @@ async function renderModeration() {
       content.querySelector("#delete-level-btn")?.addEventListener("click", async () => {
         if (!state.selectedLevelId) return;
         const levelName = levels.find((l) => l.id === state.selectedLevelId)?.name || state.selectedLevelId;
-        if (!window.confirm(copy(`Удалить уровень "${levelName}" навсегда?`, `Delete level "${levelName}" permanently?`))) return;
+        if (!await showConfirm(copy(`Удалить уровень "${levelName}" навсегда?`, `Delete level "${levelName}" permanently?`))) return;
         try {
           await api(`/api/levels/${encodeURIComponent(state.selectedLevelId)}`, { method: "DELETE" });
           toastNotification(copy("Уровень удалён", "Level deleted"), "success");
@@ -1881,7 +2142,7 @@ async function renderAccounts() {
           const userId = btn.dataset.banToggle;
           const currentBan = btn.dataset.banCurrent === "true";
           const confirmMsg = currentBan ? copy("Разбанить пользователя?", "Unban this user?") : copy("Забанить пользователя?", "Ban this user?");
-          if (!window.confirm(confirmMsg)) return;
+          if (!await showConfirm(confirmMsg)) return;
           try {
             await api(`/api/users/${encodeURIComponent(userId)}`, { method: "PATCH", body: JSON.stringify({ isBanned: !currentBan }) });
             toastNotification(copy(currentBan ? "Пользователь разбанен" : "Пользователь забанен", currentBan ? "User unbanned" : "User banned"), "success");
@@ -1896,7 +2157,7 @@ async function renderAccounts() {
         btn.addEventListener("click", async () => {
           const userId = btn.dataset.deleteUser;
           const userName = btn.dataset.deleteUserName;
-          if (!window.confirm(copy(`Удалить пользователя "${userName}" навсегда? Все его рекорды и заявки будут удалены.`, `Delete user "${userName}" permanently? All their records and submissions will be removed.`))) return;
+          if (!await showConfirm(copy(`Удалить пользователя "${userName}" навсегда? Все его рекорды и заявки будут удалены.`, `Delete user "${userName}" permanently? All their records and submissions will be removed.`))) return;
           btn.disabled = true;
           btn.textContent = "...";
           try {
@@ -2086,7 +2347,7 @@ async function renderSubmissionsQueue() {
         btn.addEventListener("click", async () => {
           const action = btn.dataset.submissionAction;
           const submissionId = btn.dataset.submissionId;
-          if (action === "ban" && !window.confirm(copy("Забанить игрока?", "Ban this player?"))) return;
+          if (action === "ban" && !await showConfirm(copy("Забанить игрока?", "Ban this player?"))) return;
           const noteInput = content.querySelector(`[data-mod-note-for="${submissionId}"]`);
           const moderationNote = noteInput ? noteInput.value.trim() : "";
 
@@ -2139,7 +2400,7 @@ async function renderSubmissionsQueue() {
       content.querySelectorAll("[data-delete-submission]").forEach((btn) => {
         btn.addEventListener("click", async () => {
           const submissionId = btn.dataset.deleteSubmission;
-          if (!window.confirm(copy("Удалить заявку навсегда?", "Delete submission permanently?"))) return;
+          if (!await showConfirm(copy("Удалить заявку навсегда?", "Delete submission permanently?"))) return;
           btn.disabled = true;
           btn.textContent = "...";
           try {
@@ -2727,6 +2988,43 @@ function renderApiDocs() {
   `;
 }
 
+async function renderNotifications() {
+  const content = document.getElementById("page-content");
+  if (!currentUser) {
+    content.innerHTML = accessPanel();
+    return;
+  }
+  content.innerHTML = renderLoading();
+  try {
+    const notifs = await api("/api/notifications");
+    await api("/api/notifications/read", { method: "POST", body: JSON.stringify({}) });
+    updateNotifBadge(0);
+
+    if (!notifs.length) {
+      content.innerHTML = `<div class="empty-panel">${copy("Уведомлений нет", "No notifications")}</div>`;
+      return;
+    }
+
+    content.innerHTML = `
+      <h1 class="page-title">${copy("Уведомления", "Notifications")}</h1>
+      <div class="notif-list">
+        ${notifs.map((n) => `
+          <div class="notif-item ${n.read ? "is-read" : "is-unread"}">
+            <span class="notif-icon-wrap">${notifTypeIcon(n.type)}</span>
+            <div class="notif-body">
+              <div class="notif-title">${escapeHtml(getLang() === "ru" ? n.titleRu : n.titleEn)}</div>
+              <div class="notif-time">${timeAgo(n.createdAt)}</div>
+            </div>
+            ${n.link ? `<a class="notif-link-btn btn btn-sm btn-secondary" href="${n.link}">${copy("Открыть", "Open")}</a>` : ""}
+          </div>
+        `).join("")}
+      </div>
+    `;
+  } catch (err) {
+    content.innerHTML = renderError(getErrorMessage(err));
+  }
+}
+
 async function renderPage() {
   if (page === "list") return renderList();
   if (page === "level") return renderLevel();
@@ -2739,6 +3037,7 @@ async function renderPage() {
   if (page === "account") return renderAccount();
   if (page === "user") return renderUserProfile();
   if (page === "api") return renderApiDocs();
+  if (page === "notifications") return renderNotifications();
   return renderHome();
 }
 
@@ -2773,6 +3072,12 @@ async function init() {
   });
 
   await renderPage();
+
+  if (currentUser) {
+    requestNotifPermission();
+    pollNotifications();
+    setInterval(pollNotifications, 30000);
+  }
 }
 
 init();

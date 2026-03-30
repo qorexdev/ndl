@@ -47,6 +47,18 @@ const icons = {
     '<svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M18.24 2.25h3.31l-7.23 8.26 8.5 11.24h-6.66l-5.21-6.82-5.96 6.82H1.68l7.73-8.84L1.25 2.25h6.83l4.71 6.23 5.45-6.23Zm-1.16 17.52h1.83L7.08 4.13H5.12Z"/></svg>',
   sun: '<svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 18a6 6 0 1 1 0-12 6 6 0 0 1 0 12zm0-2a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM11 1h2v3h-2V1zm0 19h2v3h-2v-3zM3.515 4.929l1.414-1.414L7.05 5.636 5.636 7.05 3.515 4.93zM16.95 18.364l1.414-1.414 2.121 2.121-1.414 1.414-2.121-2.121zm2.121-14.85 1.414 1.415-2.121 2.121-1.414-1.414 2.121-2.121zM5.636 16.95l1.414 1.414-2.121 2.121-1.414-1.414 2.121-2.121zM23 11v2h-3v-2h3zM4 11v2H1v-2h4z"/></svg>',
   moon: '<svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M10 7a7 7 0 0 0 12 4.9v.1c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2h.1A6.979 6.979 0 0 0 10 7zm-6 5a8 8 0 0 0 15.062 3.762A9 9 0 0 1 8.238 4.938 7.999 7.999 0 0 0 4 12z"/></svg>',
+  bell:
+    '<svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>',
+  chevron:
+    '<svg class="chevron-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>',
+  github:
+    '<svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.8.1-.7.1-.7 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.3-3.2-.1-.3-.6-1.5.1-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6.2 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>',
+  translate:
+    '<svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17A15.44 15.44 0 0 1 11 11.93c-.64-1-1.2-2.07-1.6-3.24H7.32c.46 1.51 1.16 2.97 2.04 4.33l-3.84 3.78L7 18l4-4 2.12 2.12.75-1.05zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33 1.62 4.33h-3.24z"/></svg>',
+  share:
+    '<svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/></svg>',
+  moreHoriz:
+    '<svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>',
 };
 
 export const translations = {
@@ -245,6 +257,12 @@ export const translations = {
     allStatuses: "All statuses",
     allTypes: "All types",
     submissionId: "ID",
+    navNotifications: "Notifications",
+    notifEmpty: "No notifications",
+    notifOpen: "Open",
+    notifMarkRead: "Mark all as read",
+    navMore: "More",
+    navSocials: "Socials",
   },
   ru: {
     siteName: "Nerfed DemonList",
@@ -441,6 +459,12 @@ export const translations = {
     allStatuses: "Все статусы",
     allTypes: "Все типы",
     submissionId: "ID",
+    navNotifications: "Уведомления",
+    notifEmpty: "Нет уведомлений",
+    notifOpen: "Открыть",
+    notifMarkRead: "Отметить все прочитанными",
+    navMore: "Ещё",
+    navSocials: "Соцсети",
   },
 };
 
@@ -512,43 +536,79 @@ function backgroundGeometry() {
 }
 
 function header(page) {
+  const ch = icon("chevron");
+  const listPages = ["list", "level", "leaderboard", "submit"];
+  const morePages = ["rules", "api", "moderation", "submissions", "accounts"];
+
   return `
     <header>
       <a class="logo" href="/">
-        ${icon("globe")}
-        <div class="logo-copy">
-          <span>${t("siteName")}</span>
-          <small>${t("siteTagline")}</small>
+        <div class="logo-icon-wrap">
+          ${icon("globe")}
         </div>
+        <span class="logo-wordmark">${t("siteName").toUpperCase()}</span>
       </a>
+
       <nav class="nav-links" aria-label="Primary">
-        ${navConfig
-          .map(
-            (item) => `
-              <a
-                id="nav-${item.id}"
-                class="nav-item ${page === item.id || (page === "level" && item.id === "list") ? "active" : ""} ${item.modOnly ? "is-hidden" : ""}"
-                href="${item.href}"
-                ${item.modOnly ? 'data-mod-only="1"' : ""}
-              >
-                ${icon(item.icon)}
-                <span>${t(item.label)}</span>
-              </a>
-            `,
-          )
-          .join("")}
-      </nav>
-      <div class="header-actions">
-        <div class="lang-switcher" aria-label="Language switcher">
-          <button class="lang-btn ${getLang() === "ru" ? "active" : ""}" data-lang="ru">${t("langRu")}</button>
-          <button class="lang-btn ${getLang() === "en" ? "active" : ""}" data-lang="en">${t("langEn")}</button>
+        <div class="nav-dropdown ${listPages.includes(page) ? "is-active" : ""}" id="navd-list">
+          <button class="nav-dropdown-btn" data-dropdown="navd-list">
+            ${icon("list")} ${t("navList")} ${ch}
+          </button>
+          <div class="nav-dropdown-menu">
+            <a class="nav-dropdown-item" id="nav-list" href="/list">${icon("list")} ${t("navList")}</a>
+            <a class="nav-dropdown-item" id="nav-leaderboard" href="/leaderboard">${icon("trophy")} ${t("navLeaderboard")}</a>
+            <a class="nav-dropdown-item" id="nav-submit" href="/submit">${icon("upload")} ${t("navSubmit")}</a>
+          </div>
         </div>
-        <button class="theme-toggle" id="theme-toggle-btn" aria-label="Toggle theme">
+
+        <div class="nav-dropdown ${morePages.includes(page) ? "is-active" : ""}" id="navd-more">
+          <button class="nav-dropdown-btn" data-dropdown="navd-more">
+            ${icon("moreHoriz")} ${t("navMore")} ${ch}
+          </button>
+          <div class="nav-dropdown-menu">
+            <a class="nav-dropdown-item" id="nav-rules" href="/rules">${icon("book")} ${t("navRules")}</a>
+            <a class="nav-dropdown-item" id="nav-api" href="/api">${icon("chart")} API Docs</a>
+            <hr class="nav-dropdown-divider is-hidden" data-mod-only />
+            <a class="nav-dropdown-item is-hidden" id="nav-moderation" href="/moderation" data-mod-only>${icon("shield")} ${t("navModeration")}</a>
+            <a class="nav-dropdown-item is-hidden" id="nav-submissions" href="/submissions" data-mod-only>${icon("chart")} ${t("navSubmissions")}</a>
+            <a class="nav-dropdown-item is-hidden" id="nav-accounts" href="/accounts" data-mod-only>${icon("user")} ${t("navAccounts")}</a>
+          </div>
+        </div>
+
+        <div class="nav-dropdown" id="navd-socials">
+          <button class="nav-dropdown-btn" data-dropdown="navd-socials">
+            ${icon("share")} ${t("navSocials")} ${ch}
+          </button>
+          <div class="nav-dropdown-menu">
+            <a class="nav-dropdown-item" href="https://t.me/NDemonList" target="_blank" rel="noreferrer">${icon("telegram")} Telegram</a>
+            <a class="nav-dropdown-item" href="https://github.com/qorexdev" target="_blank" rel="noreferrer">${icon("github")} GitHub</a>
+          </div>
+        </div>
+      </nav>
+
+      <div class="header-actions">
+        <div class="nav-dropdown" id="navd-lang">
+          <button class="nav-dropdown-btn nav-dropdown-btn--sm nav-dropdown-btn--icon" data-dropdown="navd-lang" aria-label="Language">
+            ${icon("translate")} ${ch}
+          </button>
+          <div class="nav-dropdown-menu nav-dropdown-menu--right">
+            <button class="nav-dropdown-item lang-btn ${getLang() === "en" ? "lang-active" : ""}" data-lang="en">🇬🇧 English</button>
+            <button class="nav-dropdown-item lang-btn ${getLang() === "ru" ? "lang-active" : ""}" data-lang="ru">🇷🇺 Русский</button>
+          </div>
+        </div>
+
+        <button class="icon-btn theme-toggle" id="theme-toggle-btn" aria-label="Toggle theme">
           ${getTheme() === "dark" ? icon("sun") : icon("moon")}
         </button>
-        <a class="user-profile ${page === "account" ? "active" : ""}" href="/account">
-          <span class="user-profile-avatar" id="shell-user-avatar">ND</span>
-          <span id="shell-user-label">${t("navAccount")}</span>
+
+        <a class="icon-btn notif-bell ${page === "notifications" ? "active" : ""}" href="/notifications" id="notif-bell-btn" aria-label="${t("navNotifications")}">
+          ${icon("bell")}
+          <span class="notif-badge" id="notif-badge" style="display:none">0</span>
+        </a>
+
+        <a class="user-chip ${page === "account" ? "active" : ""}" href="/account">
+          <span class="user-chip-avatar" id="shell-user-avatar">ND</span>
+          <span class="user-chip-name" id="shell-user-label">${t("navAccount")}</span>
         </a>
       </div>
     </header>
@@ -600,7 +660,6 @@ export function mountShell(page) {
 export function updateShellUser(user) {
   const labelNode = document.getElementById("shell-user-label");
   const avatarNode = document.getElementById("shell-user-avatar");
-  const moderationLink = document.getElementById("nav-moderation");
 
   if (labelNode) {
     labelNode.textContent = user?.nickname || t("navAccount");
@@ -614,22 +673,34 @@ export function updateShellUser(user) {
     }
   }
 
+  // Show/hide mod-only items
   document.querySelectorAll("[data-mod-only]").forEach((el) => {
     el.classList.toggle("is-hidden", !user || !["moderator", "admin"].includes(user.role));
   });
-  if (moderationLink) {
-    moderationLink.classList.toggle("is-hidden", !user || !["moderator", "admin"].includes(user.role));
-  }
 }
 
 export function bindShellEvents(onChange) {
-  document.querySelectorAll(".lang-btn").forEach((button) => {
+  // Dropdown toggle
+  document.querySelectorAll(".nav-dropdown-btn[data-dropdown]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const targetId = btn.dataset.dropdown;
+      const dropdown = document.getElementById(targetId);
+      const isOpen = dropdown?.classList.contains("open");
+      document.querySelectorAll(".nav-dropdown.open").forEach((d) => d.classList.remove("open"));
+      if (dropdown && !isOpen) dropdown.classList.add("open");
+    });
+  });
+
+  document.addEventListener("click", () => {
+    document.querySelectorAll(".nav-dropdown.open").forEach((d) => d.classList.remove("open"));
+  });
+
+  // Language buttons (now inside dropdown)
+  document.querySelectorAll(".lang-btn[data-lang]").forEach((button) => {
     button.addEventListener("click", () => {
       const nextLang = button.dataset.lang;
-      if (nextLang === getLang()) {
-        return;
-      }
-
+      if (nextLang === getLang()) return;
       setLang(nextLang);
       onChange();
     });
@@ -647,12 +718,24 @@ export function bindShellEvents(onChange) {
 
 export function updateShellNav(page) {
   document.title = pageTitle(page);
-  document.querySelectorAll(".nav-links .nav-item").forEach((a) => {
+  const listPages = ["list", "level", "leaderboard", "submit"];
+  const morePages = ["rules", "api", "moderation", "submissions", "accounts"];
+
+  document.getElementById("navd-list")?.classList.toggle("is-active", listPages.includes(page));
+  document.getElementById("navd-more")?.classList.toggle("is-active", morePages.includes(page));
+
+  // Update active item inside dropdowns
+  document.querySelectorAll(".nav-dropdown-item[id]").forEach((a) => {
     const id = a.id.replace("nav-", "");
     a.classList.toggle("active", id === page || (page === "level" && id === "list"));
   });
-  const userLink = document.querySelector(".user-profile");
-  if (userLink) userLink.classList.toggle("active", page === "account");
+
+  // User chip active
+  const userChip = document.querySelector(".user-chip");
+  if (userChip) userChip.classList.toggle("active", page === "account");
+  // Bell active
+  const bell = document.getElementById("notif-bell-btn");
+  if (bell) bell.classList.toggle("active", page === "notifications");
 }
 
 export function renderLoading() {

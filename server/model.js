@@ -448,6 +448,14 @@ function sanitizeSubmissionInput(input, user, store) {
     let progressStr = String(input.progress).trim();
     if (/^\d+(?:\.\d+)?$/.test(progressStr)) progressStr += "%";
 
+    const progressNum = progressNumber(progressStr);
+    if (level.minProgress != null) {
+      const minProg = Number(level.minProgress);
+      if (progressNum < minProg) {
+        throw new Error(`Minimum progress for this level is ${minProg}%`);
+      }
+    }
+
     return {
       ...baseSubmission,
       levelId: level.id,
@@ -492,6 +500,25 @@ function sanitizeSubmissionInput(input, user, store) {
   };
 }
 
+function createNotification(store, userId, type, titleRu, titleEn, link) {
+  if (!store.notifications) store.notifications = [];
+  const notif = {
+    id: randomUUID(),
+    userId,
+    type,
+    titleRu,
+    titleEn,
+    link: link || null,
+    read: false,
+    createdAt: new Date().toISOString(),
+  };
+  store.notifications.unshift(notif);
+  if (store.notifications.length > 500) {
+    store.notifications = store.notifications.slice(0, 500);
+  }
+  return notif;
+}
+
 function applySubmissionDecision(store, submission, action, moderator, moderationNote = "") {
   const nextStatus = {
     approve: "approved",
@@ -508,6 +535,35 @@ function applySubmissionDecision(store, submission, action, moderator, moderatio
   submission.moderationNote = String(moderationNote || submission.moderationNote || "").trim();
   submission.reviewedBy = moderator.nickname;
   submission.updatedAt = new Date().toISOString();
+
+  // Player notifications
+  if (action === "approve" && submission.type === "record") {
+    createNotification(store, submission.userId, "record_approved",
+      `Рекорд одобрен: ${submission.levelName}`,
+      `Record approved: ${submission.levelName}`,
+      submission.levelId ? `/level?id=${submission.levelId}` : null);
+  } else if (action === "reject" && submission.type === "record") {
+    createNotification(store, submission.userId, "record_rejected",
+      `Рекорд отклонён: ${submission.levelName}`,
+      `Record rejected: ${submission.levelName}`,
+      null);
+  } else if (action === "approve" && submission.type === "level") {
+    createNotification(store, submission.userId, "level_approved",
+      `Заявка на уровень одобрена: ${submission.levelName}`,
+      `Level submission approved: ${submission.levelName}`,
+      null);
+  } else if (action === "reject" && submission.type === "level") {
+    createNotification(store, submission.userId, "level_rejected",
+      `Заявка на уровень отклонена: ${submission.levelName}`,
+      `Level submission rejected: ${submission.levelName}`,
+      null);
+  }
+  if (action === "ban") {
+    createNotification(store, submission.userId, "banned",
+      "Ваш аккаунт заблокирован",
+      "Your account has been banned",
+      null);
+  }
 
   if (action === "ban") {
     const player = store.users.find((user) => user.id === submission.userId);
@@ -551,6 +607,7 @@ function applySubmissionDecision(store, submission, action, moderator, moderatio
 module.exports = {
   appendLevelHistory,
   applySubmissionDecision,
+  createNotification,
   buildCountryLeaderboard,
   buildPlayerLeaderboard,
   calculateLevelPoints,

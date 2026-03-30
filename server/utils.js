@@ -68,6 +68,52 @@ function methodNotAllowed(res, methods) {
   res.end();
 }
 
+function getClientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded) return forwarded.split(",")[0].trim();
+  return req.headers["x-real-ip"] || req.socket?.remoteAddress || "unknown";
+}
+
+// Fixed-window rate limiter
+class RateLimiter {
+  constructor(maxRequests, windowMs) {
+    this.maxRequests = maxRequests;
+    this.windowMs = windowMs;
+    this.store = new Map();
+    // cleanup every 5 min
+    setInterval(() => {
+      const now = Date.now();
+      for (const [key, rec] of this.store) {
+        if (now > rec.resetAt) this.store.delete(key);
+      }
+    }, 5 * 60 * 1000).unref();
+  }
+
+  check(ip) {
+    const now = Date.now();
+    const rec = this.store.get(ip);
+    if (!rec || now > rec.resetAt) {
+      this.store.set(ip, { count: 1, resetAt: now + this.windowMs });
+      return true;
+    }
+    if (rec.count >= this.maxRequests) return false;
+    rec.count++;
+    return true;
+  }
+}
+
+// Limiters for different endpoint categories
+const limiters = {
+  api:        new RateLimiter(300, 60_000),       // 300 req/min  — general API
+  auth:       new RateLimiter(10,  10 * 60_000),  // 10 req/10min — login/register
+  submit:     new RateLimiter(8,   5  * 60_000),  // 8 req/5min   — submissions
+};
+
+function tooManyRequests(res) {
+  res.writeHead(429, { "Content-Type": "application/json; charset=utf-8", "Retry-After": "60" });
+  res.end(JSON.stringify({ error: "Too many requests. Please slow down." }));
+}
+
 function slugify(value) {
   return String(value || "")
     .trim()
@@ -209,8 +255,10 @@ function serveStatic(req, res) {
 module.exports = {
   badRequest,
   forbidden,
+  getClientIp,
   getRequestBody,
   isGoogleDriveLink,
+  limiters,
   methodNotAllowed,
   sendJsonPublic,
   notFound,
@@ -219,5 +267,6 @@ module.exports = {
   sendJson,
   serveStatic,
   slugify,
+  tooManyRequests,
   unauthorized,
 };
