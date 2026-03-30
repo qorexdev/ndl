@@ -894,6 +894,22 @@ header {
   flex-shrink: 0;
 }
 
+.input-score-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.input-score-wrap input {
+  flex: 1;
+}
+.score-max-hint {
+  font-size: 0.8rem;
+  color: var(--accent-soft);
+  white-space: nowrap;
+  font-weight: 600;
+  min-width: 70px;
+}
+
 .change-neighbors {
   align-items: center;
   color: var(--text-muted);

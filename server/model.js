@@ -479,6 +479,7 @@ function sanitizeSubmissionInput(input, user, store) {
     verifierNickname: String(input.verifierNickname || "").trim(),
     progress: "Application",
 
+    proposedRank: input.proposedRank ? Number(input.proposedRank) : null,
     nerfedLevelId: String(input.nerfedLevelId || "").trim(),
     originalLevelId: String(input.originalLevelId || "").trim(),
     length: String(input.length || "").trim(),

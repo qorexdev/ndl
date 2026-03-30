@@ -1023,8 +1023,12 @@ async function renderSubmit() {
           ${renderField(t("fieldSimilarity"), `<input name="similarity" type="number" min="1" max="100" value="${escapeHtml(values.similarity || "80")}" />`)}
         </div>
         <div class="form-grid">
+          ${renderField(copy("Предлагаемое место", "Proposed rank"), `<input name="proposedRank" id="sub-proposed-rank" type="number" min="1" placeholder="${escapeHtml(copy("Напр: 5", "E.g.: 5"))}" value="${escapeHtml(values.proposedRank || "")}" />`)}
+          ${renderField(t("fieldSimilarity"), "")}
+        </div>
+        <div class="form-grid">
           ${renderField(t("fieldMinProgress"), `<input name="minProgress" type="number" min="1" max="99" placeholder="${escapeHtml(copy("Напр: 72", "E.g.: 72"))}" value="${escapeHtml(values.minProgress || "")}" />`)}
-          ${renderField(t("fieldMinProgressScore"), `<input name="minProgressScore" type="number" min="1" placeholder="${escapeHtml(copy("Очки при мин. прогрессе", "Points at min progress"))}" value="${escapeHtml(values.minProgressScore || "")}" />`)}
+          ${renderField(t("fieldMinProgressScore"), `<div class="input-score-wrap"><input name="minProgressScore" type="number" min="1" placeholder="${escapeHtml(copy("Необязательно", "Optional"))}" value="${escapeHtml(values.minProgressScore || "")}" /><span class="score-max-hint" id="sub-score-hint"></span></div>`)}
         </div>
         <div class="form-grid">
           ${renderField(t("fieldLength"), `<input name="length" value="${escapeHtml(values.length || "")}" />`)}
@@ -1100,6 +1104,15 @@ async function renderSubmit() {
       if (state.type === "level") {
         bindFileInputs(content);
         bindUserSearchFields(content);
+
+        const calcScore100 = (rank) => Math.max(20, 1000 - (rank - 1) * 40);
+        const updateSubHint = () => {
+          const rank = Number(content.querySelector("#sub-proposed-rank")?.value);
+          const hint = content.querySelector("#sub-score-hint");
+          if (hint) hint.textContent = rank >= 1 ? `/ ${calcScore100(rank)} pts` : "";
+        };
+        content.querySelector("#sub-proposed-rank")?.addEventListener("input", updateSubHint);
+        updateSubHint();
       }
 
       content.querySelector("#submission-form")?.addEventListener("submit", async (e) => {
@@ -1342,7 +1355,7 @@ async function renderModeration() {
               </div>
               <div class="form-grid">
                 ${renderField(t("fieldMinProgress"), `<input name="minProgress" type="number" min="1" max="99" placeholder="${escapeHtml(copy("Напр: 72", "E.g.: 72"))}" value="${escapeHtml(state.values.minProgress || "")}" />`)}
-                ${renderField(t("fieldMinProgressScore"), `<input name="minProgressScore" id="minProgressScore" type="number" min="1" placeholder="${escapeHtml(copy("Авто при сохранении", "Auto on save"))}" value="${escapeHtml(state.values.minProgressScore || "")}" />`)}
+                ${renderField(t("fieldMinProgressScore"), `<div class="input-score-wrap"><input name="minProgressScore" type="number" min="1" placeholder="${escapeHtml(copy("Авто при сохранении", "Auto on save"))}" value="${escapeHtml(state.values.minProgressScore || "")}" /><span class="score-max-hint" id="mod-score-hint"></span></div>`)}
               </div>
               <div class="form-grid">
                 ${renderField(t("fieldLength"), `<input name="length" value="${escapeHtml(state.values.length || "")}" />`)}
@@ -1364,6 +1377,15 @@ async function renderModeration() {
 
       bindFileInputs(content);
       bindUserSearchFields(content);
+
+      const calcScore100 = (rank) => Math.max(20, 1000 - (rank - 1) * 40);
+      const updateModHint = () => {
+        const rank = Number(content.querySelector('[name="rank"]')?.value);
+        const hint = content.querySelector("#mod-score-hint");
+        if (hint) hint.textContent = rank >= 1 ? `/ ${calcScore100(rank)} pts` : "";
+      };
+      content.querySelector('[name="rank"]')?.addEventListener("input", updateModHint);
+      updateModHint();
 
       content.querySelector("#editor-level-select")?.addEventListener("change", (e) => {
         const nextId = e.target.value;

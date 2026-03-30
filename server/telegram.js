@@ -168,6 +168,7 @@ async function notifySubmission(submission) {
       submission.originalName ? `Оригинал: <i>${submission.originalName}</i>` : null,
       creatorLink ? `Создатель: ${creatorLink}` : null,
       verifierLink ? `Верификатор: ${verifierLink}` : null,
+      submission.proposedRank ? `Предлагаемое место: <b>#${submission.proposedRank}</b>` : null,
       submission.originalPlacement ? `Позиция оригинала: <b>${submission.originalPlacement}</b>` : null,
       submission.segment ? `Список: <b>${segmentLabel(submission.segment)}</b>` : null,
       submission.length ? `Длина: <b>${submission.length}</b>` : null,
