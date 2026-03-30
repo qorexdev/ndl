@@ -1023,12 +1023,11 @@ async function renderSubmit() {
           ${renderField(t("fieldSimilarity"), `<input name="similarity" type="number" min="1" max="100" value="${escapeHtml(values.similarity || "80")}" />`)}
         </div>
         <div class="form-grid">
-          ${renderField(copy("Предлагаемое место", "Proposed rank"), `<input name="proposedRank" id="sub-proposed-rank" type="number" min="1" placeholder="${escapeHtml(copy("Напр: 5", "E.g.: 5"))}" value="${escapeHtml(values.proposedRank || "")}" />`)}
-          ${renderField(t("fieldSimilarity"), "")}
+          ${renderField(copy("Предлагаемое место", "Proposed rank"), `<input name="proposedRank" id="sub-proposed-rank" type="number" min="1" max="${levels.length + 1}" placeholder="${escapeHtml(copy("Напр: 5", "E.g.: 5"))}" value="${escapeHtml(values.proposedRank || "")}" />`)}
+          ${renderField(t("fieldMinProgress"), `<input name="minProgress" type="number" min="1" max="99" placeholder="${escapeHtml(copy("Напр: 72", "E.g.: 72"))}" value="${escapeHtml(values.minProgress || "")}" />`)}
         </div>
         <div class="form-grid">
-          ${renderField(t("fieldMinProgress"), `<input name="minProgress" type="number" min="1" max="99" placeholder="${escapeHtml(copy("Напр: 72", "E.g.: 72"))}" value="${escapeHtml(values.minProgress || "")}" />`)}
-          ${renderField(t("fieldMinProgressScore"), `<div class="input-score-wrap"><input name="minProgressScore" type="number" min="1" placeholder="${escapeHtml(copy("Необязательно", "Optional"))}" value="${escapeHtml(values.minProgressScore || "")}" /><span class="score-max-hint" id="sub-score-hint"></span></div>`)}
+          ${renderField(t("fieldMinProgressScore"), `<div class="input-score-wrap"><input name="minProgressScore" type="number" min="1" required placeholder="0" value="${escapeHtml(values.minProgressScore || "")}" /><span class="score-max-hint" id="sub-score-hint"></span></div>`)}
         </div>
         <div class="form-grid">
           ${renderField(t("fieldLength"), `<input name="length" value="${escapeHtml(values.length || "")}" />`)}
@@ -1355,7 +1354,7 @@ async function renderModeration() {
               </div>
               <div class="form-grid">
                 ${renderField(t("fieldMinProgress"), `<input name="minProgress" type="number" min="1" max="99" placeholder="${escapeHtml(copy("Напр: 72", "E.g.: 72"))}" value="${escapeHtml(state.values.minProgress || "")}" />`)}
-                ${renderField(t("fieldMinProgressScore"), `<div class="input-score-wrap"><input name="minProgressScore" type="number" min="1" placeholder="${escapeHtml(copy("Авто при сохранении", "Auto on save"))}" value="${escapeHtml(state.values.minProgressScore || "")}" /><span class="score-max-hint" id="mod-score-hint"></span></div>`)}
+                ${renderField(t("fieldMinProgressScore"), `<div class="input-score-wrap"><input name="minProgressScore" type="number" min="1" placeholder="0" value="${escapeHtml(state.values.minProgressScore || "")}" /><span class="score-max-hint" id="mod-score-hint"></span></div>`)}
               </div>
               <div class="form-grid">
                 ${renderField(t("fieldLength"), `<input name="length" value="${escapeHtml(state.values.length || "")}" />`)}

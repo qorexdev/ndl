@@ -294,16 +294,12 @@ function normalizeLevelRanks(store) {
     .map((level, index) => {
       const newRank = index + 1;
       const points = calculateLevelPoints(newRank, store.levels.length);
-      const autoMinProgressScore = (level.minProgress != null && !level.minProgressScore)
-        ? Number(points.score100)
-        : level.minProgressScore;
       return {
         ...level,
         rank: newRank,
         score100: points.score100,
         scoreProgress: points.scoreProgress,
         requiredProgress: points.requiredProgress,
-        minProgressScore: autoMinProgressScore,
       };
     });
 }
