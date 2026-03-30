@@ -46,6 +46,11 @@ function thumbUrl(level) {
   return `${SITE_URL}${level.thumbnailUrl}`;
 }
 
+function profileLink(nickname) {
+  if (!nickname) return null;
+  return `<a href="${SITE_URL}/user?name=${encodeURIComponent(nickname)}">${nickname}</a>`;
+}
+
 async function notifyLevelAdded(level, neighbors = null) {
   const neighborLine = neighbors
     ? [
@@ -110,12 +115,11 @@ async function notifyLevelMoved(level, previousRank, allLevels) {
     ``,
     `<a href="${SITE_URL}/level?id=${level.id}">View on NDL</a>`,
   ].filter((x) => x !== null).join("\n");
-  const text = lines;
 
   try {
     await tgRequest("sendMessage", {
       chat_id: CHANNEL_ID,
-      text,
+      text: lines,
       parse_mode: "HTML",
       disable_web_page_preview: true,
     });
@@ -153,39 +157,43 @@ async function notifySubmission(submission) {
   let text, keyboard;
 
   if (isLevel) {
+    const creatorLink = profileLink(submission.creatorNickname);
+    const verifierLink = profileLink(submission.verifierNickname);
+    const playerLink = profileLink(submission.player);
+
     text = [
       `📋 <b>Новая заявка на уровень</b>`,
       ``,
       `<b>${submission.levelName || "—"}</b>`,
       submission.originalName ? `Оригинал: <i>${submission.originalName}</i>` : null,
-      submission.creatorNickname ? `Создатель: <b>${submission.creatorNickname}</b>` : null,
-      submission.verifierNickname ? `Верификатор: <b>${submission.verifierNickname}</b>` : null,
+      creatorLink ? `Создатель: ${creatorLink}` : null,
+      verifierLink ? `Верификатор: ${verifierLink}` : null,
       submission.originalPlacement ? `Позиция оригинала: <b>${submission.originalPlacement}</b>` : null,
       submission.segment ? `Список: <b>${segmentLabel(submission.segment)}</b>` : null,
       submission.length ? `Длина: <b>${submission.length}</b>` : null,
       submission.objects ? `Объектов: <b>${submission.objects}</b>` : null,
-      submission.similarity != null ? `Схожесть с нерфом: <b>${submission.similarity}%</b>` : null,
+      submission.similarity != null ? `Схожесть с оригиналом: <b>${submission.similarity}%</b>` : null,
       ``,
-      `Заявку подал: <b>${submission.player}</b>`,
+      `Заявку подал: ${playerLink || submission.player}`,
       submission.notes ? `Заметки: ${submission.notes}` : null,
       ``,
       submission.videoUrl ? `🎥 <a href="${submission.videoUrl}">Видео</a>` : null,
       submission.rawUrl ? `📁 <a href="${submission.rawUrl}">Raw footage</a>` : null,
-      submission.verificationUrl ? `✅ <a href="${submission.verificationUrl}">Верификация</a>` : null,
+      submission.songUrl ? `🎵 <a href="${submission.songUrl}">Саундтрек</a>` : null,
     ].filter((x) => x !== null).join("\n");
 
     keyboard = {
       inline_keyboard: [[
         { text: "Принять ✅", callback_data: `sub_approve:${id}` },
         { text: "Отклонить ❌", callback_data: `sub_reject:${id}` },
-        { text: "На доработку 🔄", callback_data: `sub_revise:${id}` },
       ]],
     };
   } else {
+    const playerLink = profileLink(submission.player);
     text = [
       `🎮 <b>Новая заявка на рекорд</b>`,
       ``,
-      `Игрок: <b>${submission.player}</b>`,
+      `Игрок: ${playerLink || submission.player}`,
       `Уровень: <b>${submission.levelName || "—"}</b>`,
       `Прогресс: <b>${submission.progress}</b>`,
       submission.notes ? `Заметки: ${submission.notes}` : null,
@@ -248,13 +256,14 @@ async function answerCallbackQuery(callbackQueryId, text) {
   } catch (_) {}
 }
 
-async function editTgMessage(chatId, messageId, newText, hasPhoto) {
+// Update only the inline keyboard, preserving all message text and links
+async function updateKeyboard(chatId, messageId, keyboard) {
   try {
-    if (hasPhoto) {
-      await tgRequest("editMessageCaption", { chat_id: chatId, message_id: messageId, caption: newText, parse_mode: "HTML" });
-    } else {
-      await tgRequest("editMessageText", { chat_id: chatId, message_id: messageId, text: newText, parse_mode: "HTML", disable_web_page_preview: true });
-    }
+    await tgRequest("editMessageReplyMarkup", {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: keyboard,
+    });
   } catch (_) {}
 }
 
@@ -265,6 +274,7 @@ module.exports = {
   notifySubmission,
   setupWebhook,
   answerCallbackQuery,
-  editTgMessage,
+  updateKeyboard,
   WEBHOOK_SECRET: () => WEBHOOK_SECRET,
+  SITE_URL,
 };

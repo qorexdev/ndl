@@ -638,9 +638,9 @@ async function renderLevel() {
             ${statBox(t("levelMetaOriginalTop"), level.originalPlacement)}
           </div>
           <div class="stats-grid-box three">
-            ${statBox(t("fieldPassword"), level.password)}
             ${statBox(t("fieldLength"), level.length)}
             ${statBox(t("fieldObjects"), level.objects)}
+            ${statBox(t("fieldVersion"), level.version)}
           </div>
           <div class="stats-grid-box three">
             ${statBox(t("fieldVersion"), level.version)}
@@ -1027,13 +1027,11 @@ async function renderSubmit() {
           ${renderField(t("fieldMinProgressScore"), `<input name="minProgressScore" type="number" min="1" placeholder="${escapeHtml(copy("Очки при мин. прогрессе", "Points at min progress"))}" value="${escapeHtml(values.minProgressScore || "")}" />`)}
         </div>
         <div class="form-grid">
-          ${renderField(t("fieldPassword"), `<input name="password" value="${escapeHtml(values.password || "")}" />`)}
           ${renderField(t("fieldLength"), `<input name="length" value="${escapeHtml(values.length || "")}" />`)}
           ${renderField(t("fieldObjects"), `<input name="objects" value="${escapeHtml(values.objects || "")}" />`)}
           ${renderField(t("fieldVersion"), `<input name="version" value="${escapeHtml(values.version || "")}" />`)}
         </div>
-        ${renderField(t("fieldSongUrl"), `<input name="songUrl" type="url" value="${escapeHtml(values.songUrl || "")}" />`)}
-        ${renderField(t("fieldVerificationUrl"), `<input name="verificationUrl" type="url" value="${escapeHtml(values.verificationUrl || "")}" />`)}
+        ${renderField(t("fieldSongUrl"), `<input name="songUrl" type="url" placeholder="https://www.newgrounds.com/audio/listen/..." value="${escapeHtml(values.songUrl || "")}" />`)}
         ${fileInputMarkup("thumbnailFile", copy("Загрузи превью уровня", "Upload level preview image"))}
         ${renderField(t("fieldDescriptionRu"), `<textarea name="descriptionRu">${escapeHtml(values.descriptionRu || "")}</textarea>`)}
         ${renderField(t("fieldDescriptionEn"), `<textarea name="descriptionEn">${escapeHtml(values.descriptionEn || "")}</textarea>`)}
@@ -1142,7 +1140,7 @@ function blankLevelValues(levels) {
     rank: String((levels?.length || 0) + 1), segment: "main",
     nerfedLevelId: "", originalLevelId: "", originalPlacement: "",
     similarity: "80", minProgress: "", minProgressScore: "",
-    password: "Free Copy", length: "Unknown", objects: "Unknown", version: "2.2",
+    length: "Unknown", objects: "Unknown", version: "2.2",
     songUrl: "", verificationUrl: "", descriptionRu: "", descriptionEn: "",
   };
 }
@@ -1157,7 +1155,7 @@ function levelValuesFromLevel(level) {
     originalPlacement: level.originalPlacement || "", similarity: String(level.similarity || 80),
     minProgress: level.minProgress != null ? String(level.minProgress) : "",
     minProgressScore: level.minProgressScore != null ? String(level.minProgressScore) : "",
-    password: level.password || "Free Copy", length: level.length || "Unknown",
+    length: level.length || "Unknown",
     objects: level.objects || "Unknown", version: level.version || "2.2",
     songUrl: level.songUrl || "", verificationUrl: level.verificationUrl || "",
     descriptionRu: level.description?.ru || "", descriptionEn: level.description?.en || "",
@@ -1246,6 +1244,40 @@ async function renderModeration() {
     const pageFlash = consumeFlash();
     if (pageFlash) toastNotification(pageFlash.text, pageFlash.tone);
 
+    // Handle ?from_submission=ID link from Telegram
+    const fromSubId = new URLSearchParams(window.location.search).get("from_submission");
+    if (fromSubId) {
+      try {
+        const allSubs = await api("/api/submissions");
+        const s = allSubs.find((x) => x.id === fromSubId);
+        if (s) {
+          const prefill = {
+            name: s.levelName || s.proposalName || "",
+            originalName: s.originalName || s.originalLevelName || "",
+            creatorNickname: s.creatorNickname || "",
+            verifierNickname: s.verifierNickname || "",
+            nerfedLevelId: s.nerfedLevelId || "",
+            originalLevelId: s.originalLevelId || "",
+            originalPlacement: s.originalPlacement || "",
+            similarity: s.similarity ? String(s.similarity) : "80",
+            minProgress: s.minProgress != null ? String(s.minProgress) : "",
+            minProgressScore: s.minProgressScore != null ? String(s.minProgressScore) : "",
+            length: s.length || "Unknown",
+            objects: s.objects || "Unknown",
+            version: s.version || "2.2",
+            songUrl: s.songUrl || "",
+            verificationUrl: s.verificationUrl || s.videoUrl || "",
+            descriptionRu: s.descriptionRu || "",
+            descriptionEn: s.descriptionEn || "",
+            segment: s.segment || "main",
+            thumbnailUrl: s.previewImageUrl || "",
+          };
+          window.sessionStorage.setItem("ndl-prefill-level", JSON.stringify(prefill));
+          window.history.replaceState({}, "", "/moderation");
+        }
+      } catch (_) {}
+    }
+
     let prefillValues = null;
     try {
       const raw = window.sessionStorage.getItem("ndl-prefill-level");
@@ -1310,15 +1342,14 @@ async function renderModeration() {
               </div>
               <div class="form-grid">
                 ${renderField(t("fieldMinProgress"), `<input name="minProgress" type="number" min="1" max="99" placeholder="${escapeHtml(copy("Напр: 72", "E.g.: 72"))}" value="${escapeHtml(state.values.minProgress || "")}" />`)}
-                ${renderField(t("fieldMinProgressScore"), `<input name="minProgressScore" type="number" min="1" placeholder="${escapeHtml(copy("Очки при мин. прогрессе", "Points at min progress"))}" value="${escapeHtml(state.values.minProgressScore || "")}" />`)}
+                ${renderField(t("fieldMinProgressScore"), `<input name="minProgressScore" id="minProgressScore" type="number" min="1" placeholder="${escapeHtml(copy("Авто при сохранении", "Auto on save"))}" value="${escapeHtml(state.values.minProgressScore || "")}" />`)}
               </div>
               <div class="form-grid">
-                ${renderField(t("fieldPassword"), `<input name="password" value="${escapeHtml(state.values.password || "")}" />`)}
                 ${renderField(t("fieldLength"), `<input name="length" value="${escapeHtml(state.values.length || "")}" />`)}
                 ${renderField(t("fieldObjects"), `<input name="objects" value="${escapeHtml(state.values.objects || "")}" />`)}
                 ${renderField(t("fieldVersion"), `<input name="version" value="${escapeHtml(state.values.version || "")}" />`)}
               </div>
-              ${renderField(t("fieldSongUrl"), `<input name="songUrl" type="url" value="${escapeHtml(state.values.songUrl || "")}" />`)}
+              ${renderField(t("fieldSongUrl"), `<input name="songUrl" type="url" placeholder="https://www.newgrounds.com/audio/listen/..." value="${escapeHtml(state.values.songUrl || "")}" />`)}
               ${renderField(t("fieldVerificationUrl"), `<input name="verificationUrl" type="url" required value="${escapeHtml(state.values.verificationUrl || "")}" />`)}
               ${fileInputMarkup("thumbnailFile", copy("Загрузи картинку файлом", "Upload image file"))}
               ${renderField(t("fieldDescriptionRu"), `<textarea name="descriptionRu">${escapeHtml(state.values.descriptionRu || "")}</textarea>`)}
@@ -2069,7 +2100,6 @@ async function renderSubmissionsQueue() {
             similarity: s.similarity ? String(s.similarity) : "80",
             minProgress: s.minProgress != null ? String(s.minProgress) : "",
             minProgressScore: s.minProgressScore != null ? String(s.minProgressScore) : "",
-            password: s.password || "Free Copy",
             length: s.length || "Unknown",
             objects: s.objects || "Unknown",
             version: s.version || "2.2",

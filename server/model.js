@@ -151,7 +151,7 @@ function buildPlayerLeaderboard(store, countryByCode) {
       score = Number(score.toFixed(2));
 
       const completions = userRecords.filter((record) => progressNumber(record.progress) >= 100).length;
-      const hardestRecord = [...userRecords].sort((left, right) => left.levelRank - right.levelRank)[0];
+      const hardestRecord = [...userRecords].filter((record) => progressNumber(record.progress) >= 100).sort((left, right) => left.levelRank - right.levelRank)[0];
 
       let hardest = hardestRecord ? { name: hardestRecord.levelName, rank: hardestRecord.levelRank, id: hardestRecord.levelId } : null;
       for (const level of store.levels) {
@@ -294,12 +294,16 @@ function normalizeLevelRanks(store) {
     .map((level, index) => {
       const newRank = index + 1;
       const points = calculateLevelPoints(newRank, store.levels.length);
+      const autoMinProgressScore = (level.minProgress != null && !level.minProgressScore)
+        ? Number(points.score100)
+        : level.minProgressScore;
       return {
         ...level,
         rank: newRank,
         score100: points.score100,
         scoreProgress: points.scoreProgress,
         requiredProgress: points.requiredProgress,
+        minProgressScore: autoMinProgressScore,
       };
     });
 }
@@ -415,6 +419,11 @@ function sanitizeSubmissionInput(input, user, store) {
     throw new Error("Video URL is required");
   }
 
+  const songUrl = String(input.songUrl || "").trim();
+  if (songUrl && !songUrl.includes("newgrounds.com")) {
+    throw new Error("Song URL must be from Newgrounds (newgrounds.com)");
+  }
+
   const baseSubmission = {
     id: randomUUID(),
     type,
@@ -472,12 +481,10 @@ function sanitizeSubmissionInput(input, user, store) {
 
     nerfedLevelId: String(input.nerfedLevelId || "").trim(),
     originalLevelId: String(input.originalLevelId || "").trim(),
-    password: String(input.password || "").trim(),
     length: String(input.length || "").trim(),
     objects: String(input.objects || "").trim(),
     version: String(input.version || "").trim(),
     songUrl: String(input.songUrl || "").trim(),
-    verificationUrl: String(input.verificationUrl || "").trim(),
     descriptionRu: String(input.descriptionRu || "").trim(),
     descriptionEn: String(input.descriptionEn || "").trim(),
     creatorNickname: String(input.creatorNickname || "").trim(),

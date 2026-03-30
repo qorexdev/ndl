@@ -42,8 +42,9 @@ const {
   notifySubmission,
   setupWebhook,
   answerCallbackQuery,
-  editTgMessage,
+  updateKeyboard,
   WEBHOOK_SECRET,
+  SITE_URL: TG_SITE_URL,
 } = require("./server/telegram");
 
 const HOST = process.env.HOST || "0.0.0.0";
@@ -668,7 +669,7 @@ async function handleApi(req, res) {
       const cq = body.callback_query;
       if (cq) {
         const [action, submissionId] = (cq.data || "").split(":");
-        const actionMap = { sub_approve: "approve", sub_reject: "reject", sub_ban: "ban", sub_revise: "revise" };
+        const actionMap = { sub_approve: "approve", sub_reject: "reject", sub_ban: "ban" };
         const modelAction = actionMap[action];
         const submission = store.submissions.find((s) => s.id === submissionId);
 
@@ -683,17 +684,25 @@ async function handleApi(req, res) {
             nickname: tgUser.username ? `@${tgUser.username}` : (tgUser.first_name || "TelegramAdmin"),
             role: "admin",
           };
-          const labelMap = { approve: "Одобрено ✅", reject: "Отклонено ❌", ban: "Забанено 🚫", revise: "На доработку 🔄" };
+          const labelMap = { approve: "Принято ✅", reject: "Отклонено ❌", ban: "Забанено 🚫" };
           applySubmissionDecision(store, submission, modelAction, moderator, `via Telegram by ${moderator.nickname}`);
           await writeStore(store);
           await answerCallbackQuery(cq.id, labelMap[modelAction]);
           const chatId = cq.message?.chat?.id;
           const msgId = cq.message?.message_id;
           if (chatId && msgId) {
-            const suffix = `\n\n<i>${labelMap[modelAction]} — ${moderator.nickname}</i>`;
-            const hasPhoto = Array.isArray(cq.message?.photo);
-            const original = hasPhoto ? (cq.message.caption || "") : (cq.message.text || "");
-            await editTgMessage(chatId, msgId, original + suffix, hasPhoto);
+            if (modelAction === "approve" && submission.type === "level") {
+              // Replace buttons with "Create level" link button
+              await updateKeyboard(chatId, msgId, {
+                inline_keyboard: [[
+                  { text: "Принято ✅", callback_data: `noop:done` },
+                  { text: "Создать уровень из заявки 🔗", url: `${TG_SITE_URL}/moderation?from_submission=${encodeURIComponent(submission.id)}` },
+                ]],
+              });
+            } else {
+              // Just remove buttons, preserve message text with links
+              await updateKeyboard(chatId, msgId, { inline_keyboard: [] });
+            }
           }
         }
       }
